@@ -4,9 +4,8 @@ Coastal Flood Assessment
 # Overview
 
 For additional information, contact:
-[First & Last Name],
-NOAA Center for Operational Oceanographic Products and Services,
-[Email]
+Greg Dusek,
+NOAA Center for Operational Oceanographic Products and Services, greg.dusek@noaa.gov
 
 ## NOAA Open Source Disclaimer
 
