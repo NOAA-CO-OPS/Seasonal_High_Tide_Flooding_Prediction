@@ -1,5 +1,6 @@
-# Coastal_Flood_Assessment
-Coastal Flood Assessment
+# Seasonal_High_Tide_Flooding_Prediction
+
+This is code for the NOAA Seasonal-to-Annual High Tide Flooding Prediction Model.
 
 # Overview
 
