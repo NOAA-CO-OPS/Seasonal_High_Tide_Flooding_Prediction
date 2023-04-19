@@ -21,7 +21,7 @@ tic
 stationNum=num2str(stationNum);
 
 %%
-%Grab all years of 6 minute predictions
+%Grab all years of 1 hour tide predictions
 [pred1hr] = getAPIdata(stationNum,startStr,endStr,'predictions','DatumBias','MHHW','Interval','h');
 
 
@@ -56,7 +56,7 @@ end
 %Now add in NaNs
 [obs1hr.WaterLevel,obs1hr.DateTime]=addNaNs(obs1hr.WaterLevel,obs1hr.DateTime,1/24);
 
-%Do a check to see that the prediction time series and obs time series are
+%Do a check to see that the tide prediction time series and obs time series are
 %the same length and times are the same.  If not throw an error
 
 if length(obs1hr.DateTime) ~= length(pred1hr.DateTime)
