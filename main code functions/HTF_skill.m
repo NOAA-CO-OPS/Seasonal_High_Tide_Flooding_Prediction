@@ -22,6 +22,13 @@ load([stationNum,'_res']);
 
 wl=data.wl;
 dTime=data.dateTime;
+tidePred=resOut.predAdj;
+
+%% Output the metadata to the data structure
+skillOut.stationNum=stationNum;
+skillOut.minorThresh=minorThresh;
+skillOut.slt=slt;
+skillOut.epochCenter=epochCenter;
 
 %%
 %Will need to run the prediction code 239 times to generate predictions to
@@ -66,13 +73,17 @@ nDays = ceil(days(dTime(end)-dTime(1)));
 dTimeDays=NaT(nDays,1);
 ynObs=NaN(nDays,1);
 dailyObs=NaN(nDays,1);
+dailyTidePred=NaN(nDays,1);
 
 %Loop through day-by-day, take the max observed and see if it exceeded the
 %threshold
+%Will also grab the max adjusted tide prediction for each day for future
+%plotting
 for i =1:nDays
     dayInd = i*24-23:i*24;
     dTimeDays(i)=dTime(dayInd(1));
     [dailyObs(i),~]=max(wl(dayInd));
+    [dailyTidePred(i),~]=max(tidePred(dayInd));
     if dailyObs(i) >= minorThresh
         ynObs(i)=1; 
     elseif isfinite(dailyObs(i))
@@ -103,6 +114,7 @@ skillOut.dailyProb=dailyProb;
 skillOut.dailyProbTime=dTimeDays;
 skillOut.dailyObs=dailyObs;
 skillOut.ynObs=ynObs;
+skillOut.dailyTidePred=dailyTidePred;
 
 
 %%
