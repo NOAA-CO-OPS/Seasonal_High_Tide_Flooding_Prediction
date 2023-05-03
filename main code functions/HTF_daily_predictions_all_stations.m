@@ -68,7 +68,7 @@ end
 %if nothing is in varargin then run all 4 functions, so add them in
 if isempty(varargin)
     disp('No function option selected, running all four functions')
-    varargin ={'data', 'residual', 'prediction' , 'skill'};
+    varargin ={'data', 'residual', 'prediction', 'csv', 'skill'};
 end
 
 
@@ -203,6 +203,12 @@ if ~isempty(find(strcmp(varargin, 'skill')))
         skillful5yr,totalFloods5yr,bss5yr,bssSE5yr,recall5yr,falseAlarm5yr);
 
     save('HTFtable.mat','HTFtable');
+
+    %Create the filename for saving the HTF summary table csv
+    tabfileName = strcat('HTF_skillsummary_',startStr,'_',endStr,'.csv');
+
+    %Write the file 
+    writetable(HTFtable,tabfileName);
 
 end
 
