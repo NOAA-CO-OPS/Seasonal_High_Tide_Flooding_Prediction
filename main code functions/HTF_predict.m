@@ -151,9 +151,6 @@ else
     persApply = resOut.mu_monthAmly(amlyInd).*resOut.dampedPers(1:numMonths);
 end
 
-%NOTE!!! There is an error with the order/organization of either the
-%predictions or skill assesment sometime after this point. I THINK its in
-%the skill assessment code, but not 100% sure.
 
 %Allocate the distributions going forward in time
 for i = 1:numMonths
