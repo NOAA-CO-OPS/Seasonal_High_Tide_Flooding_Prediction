@@ -136,10 +136,11 @@ if ~isempty(find(strcmp(varargin, 'csv')))
     % concatenate all the tables inot one big table and write it to output
     % file
     %writetable(cat(1,all_data{:}),output_file);
+    writetable(cat(1,all_data{:}),output_file,'Delimiter', ',');
 
     % concatenate all the tables into one table without nans
     if true
-        writetable(all_data{ii},output_file,'Delimiter', ',');
+        %writetable(all_data{ii},output_file,'Delimiter', ',');
         fid = fopen(output_file,'rt');
         X = fread(fid);
         fclose(fid);
