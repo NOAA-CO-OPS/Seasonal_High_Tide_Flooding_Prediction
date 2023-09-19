@@ -38,7 +38,6 @@ function HTF_daily_predictions_all_stations(stationList,startStr,endStr,stationI
 %   HTF_daily_predictions_all_stations('HighTideOutlookStationList_11_17_21.xlsx','20030301','20230228',[],'data','residual')
 %   Runs through ONLY the data and residual calculation steps
 
-
 %% Import the information from HTF Station List
 listIn=importdata(stationList);
 
@@ -60,7 +59,6 @@ n=length(stationNum);
 if isempty(stationIndex)
     stationIndex=1:n;
 end
-
 
 
 %% Check the varargin and determine which function loops to run
@@ -152,9 +150,10 @@ if ~isempty(find(strcmp(varargin, 'csv')))
         fclose(fid2);
     end    
 
-
+end
 
 %For the skill assessment
+
 if ~isempty(find(strcmp(varargin, 'skill')))
     disp('Calculating the skill assessment over the past 20 years for stations:')
 
@@ -451,7 +450,7 @@ if ~isempty(find(strcmp(varargin, 'skill')))
 
     %Output table w/ 1mo-12mo lead times
     HTFtable_12mo=table(stationNum,stationName,...
-        skillful_1mo,bss_1mo,bssSE_1mo,recall_1mo,falseAlarm_1mo,...
+        totalFloods,skillful_1mo,bss_1mo,bssSE_1mo,recall_1mo,falseAlarm_1mo,...
         skillful_2mo,bss_2mo,bssSE_2mo,recall_2mo,falseAlarm_2mo,...
         skillful_3mo,bss_3mo,bssSE_3mo,recall_3mo,falseAlarm_3mo,...
         skillful_4mo,bss_4mo,bssSE_4mo,recall_4mo,falseAlarm_4mo,...
