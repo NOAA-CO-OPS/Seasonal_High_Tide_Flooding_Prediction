@@ -18,24 +18,24 @@ function Output = getThresholddata(StationID,DatumBias)
 %             'NAVD' - North American Veritcal Datum of 1988
 %             'STND' - station datum
 
-% build url request for flood levels
+% build url request for flood levels in meters
 mdapi_url = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/" + ...
             "stations/";
 floodlevel_url = strcat(mdapi_url,StationID,...
-                        "/floodlevels.json");
+                        "/floodlevels.json?units=metric");
 floodlevel = webread(floodlevel_url);
-% get NOS Minor flood threshold in feet relative to STND
+% get NOS Minor flood threshold in meters relative to STND
 if ~isempty(floodlevel.nos_minor)
     minor_floodlevel = floodlevel.nos_minor;
 else
     minor_floodlevel = 0;
     floodlevel_datumbias = 1.95;
-    Output = round(floodlevel_datumbias * unitsratio("meter","feet"),3); 
+    Output = round(floodlevel_datumbias,3); 
 end  
 
-% build url request for datums
+% build url request for datums in meters
 stn_datums_url = strcat(mdapi_url,StationID,...
-                   "/datums.json");
+                   "/datums.json?units=metric");
 stn_datums = webread(stn_datums_url);
 % get user selected datum in feet
 for i = 1:length(stn_datums.datums)
@@ -46,9 +46,8 @@ for i = 1:length(stn_datums.datums)
         % handle null NOS minor flood level
         if minor_floodlevel ~= 0
             floodlevel_datumbias = abs(minor_floodlevel-stn_datum_bias);
-            disp(size(floodlevel_datumbias));
-        % convert from feet to meters and round to 3 decimals
-        Output = round(floodlevel_datumbias * unitsratio("meter","feet"),3);
+        % round to 3 decimals
+        Output = round(floodlevel_datumbias,3);
         end
     end   
 end
