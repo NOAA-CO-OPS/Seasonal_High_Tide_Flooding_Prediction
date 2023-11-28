@@ -25,7 +25,13 @@ floodlevel_url = strcat(mdapi_url,StationID,...
                         "/floodlevels.json");
 floodlevel = webread(floodlevel_url);
 % get NOS Minor flood threshold in feet relative to STND
-minor_floodlevel = floodlevel.nos_minor;
+if ~isempty(floodlevel.nos_minor)
+    minor_floodlevel = floodlevel.nos_minor;
+else
+    minor_floodlevel = 0;
+    floodlevel_datumbias = 1.95;
+    Output = round(floodlevel_datumbias * unitsratio("meter","feet"),3); 
+end  
 
 % build url request for datums
 stn_datums_url = strcat(mdapi_url,StationID,...
@@ -35,9 +41,14 @@ stn_datums = webread(stn_datums_url);
 for i = 1:length(stn_datums.datums)
     if stn_datums.datums(i).name == string(DatumBias)
         stn_datum_bias = stn_datums.datums(i).value;
+
         % Output = absolute value of minor_floodlevel - MHHW
-        floodlevel_datumbias = abs(minor_floodlevel-stn_datum_bias);
+        % handle null NOS minor flood level
+        if minor_floodlevel ~= 0
+            floodlevel_datumbias = abs(minor_floodlevel-stn_datum_bias);
+            disp(size(floodlevel_datumbias));
         % convert from feet to meters and round to 3 decimals
         Output = round(floodlevel_datumbias * unitsratio("meter","feet"),3);
-    end
+        end
+    end   
 end
