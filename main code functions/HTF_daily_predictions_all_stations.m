@@ -105,7 +105,9 @@ if ~isempty(find(strcmp(varargin, 'prediction')))
     for i = stationIndex
         stationNumStr=num2str(stationNum(i));
         disp(stationNumStr)
-        [~] = HTF_predict(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i),[],[],[],[]);
+        minorThreshDerived = getThresholddata(stationNumStr,'MHHW');
+        %[~] = HTF_predict(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i),[],[],[],[]);
+        [~] = HTF_predict(stationNumStr,minorThreshDerived,slt(i),epochCenter(i),[],[],[],[]);
     end
 
 end
@@ -251,9 +253,12 @@ if ~isempty(find(strcmp(varargin, 'skill')))
     for i = stationIndex
         stationNumStr=num2str(stationNum(i));
         disp(stationNumStr)
-        [skillOut]=HTF_skill(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i));
+        minorThreshDerived = getThresholddata(stationNumStr,'MHHW');
+        %[skillOut]=HTF_skill(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i));
+        [skillOut]=HTF_skill(stationNumStr,minorThreshDerived,slt(i),epochCenter(i));
 
         %Populate variables for output
+        minorThresh(i)=skillOut.minorThresh;
         %For 1 mo lead time
         totalFloods(i)=skillOut.totalYes;
         bss_1mo(i)=skillOut.bss(1);
@@ -449,7 +454,7 @@ if ~isempty(find(strcmp(varargin, 'skill')))
     % writetable(HTFtable,tabfileName);
 
     %Output table w/ 1mo-12mo lead times
-    HTFtable_12mo=table(stationNum,stationName,...
+    HTFtable_12mo=table(stationNum,stationName,minorThresh,...
         totalFloods,skillful_1mo,bss_1mo,bssSE_1mo,recall_1mo,falseAlarm_1mo,...
         skillful_2mo,bss_2mo,bssSE_2mo,recall_2mo,falseAlarm_2mo,...
         skillful_3mo,bss_3mo,bssSE_3mo,recall_3mo,falseAlarm_3mo,...
