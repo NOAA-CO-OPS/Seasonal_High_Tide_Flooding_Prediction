@@ -161,6 +161,7 @@ if ~isempty(find(strcmp(varargin, 'skill')))
 
     %Set up the variables we will want to output to a table (all 1 month
     %leads)
+    minorThresh=cell(n,1);
     skillful_1mo=cell(n,1);
     totalFloods=NaN(n,1);
     bss_1mo=NaN(n,1);
