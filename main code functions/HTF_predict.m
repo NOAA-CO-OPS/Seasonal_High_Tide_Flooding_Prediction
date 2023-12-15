@@ -230,7 +230,7 @@ end
 %Set up the output
 
 predOut.stationNum=stationNum;
-predOut.minorThresh=minorThresh;
+predOut.minorThresh=round(minorThresh,3);
 predOut.dateTime=dTime;
 predOut.freeboard=-1*freeboard; %using inverse freeboard to make it more intuitive (larger = more flooding)
 predOut.hourlyProb=forecastProb;

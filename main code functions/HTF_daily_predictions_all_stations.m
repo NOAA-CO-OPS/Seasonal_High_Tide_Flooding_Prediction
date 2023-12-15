@@ -105,9 +105,13 @@ if ~isempty(find(strcmp(varargin, 'prediction')))
     for i = stationIndex
         stationNumStr=num2str(stationNum(i));
         disp(stationNumStr)
-        minorThreshDerived = getThresholddata(stationNumStr,'MHHW');
+        if (stationNum(i) >= 9450000) && (stationNum(i) < 9470000)
+            [~] = HTF_predict(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i),[],[],[],[]);
+        else
+            minorThreshDerived = getThresholddata(stationNumStr,'MHHW');
         %[~] = HTF_predict(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i),[],[],[],[]);
-        [~] = HTF_predict(stationNumStr,minorThreshDerived,slt(i),epochCenter(i),[],[],[],[]);
+            [~] = HTF_predict(stationNumStr,minorThreshDerived,slt(i),epochCenter(i),[],[],[],[]);
+        end    
     end
 
 end
@@ -161,7 +165,7 @@ if ~isempty(find(strcmp(varargin, 'skill')))
 
     %Set up the variables we will want to output to a table (all 1 month
     %leads)
-    minorThresh=cell(n,1);
+    minorThresh=NaN(n,1);
     skillful_1mo=cell(n,1);
     totalFloods=NaN(n,1);
     bss_1mo=NaN(n,1);
@@ -254,10 +258,13 @@ if ~isempty(find(strcmp(varargin, 'skill')))
     for i = stationIndex
         stationNumStr=num2str(stationNum(i));
         disp(stationNumStr)
-        minorThreshDerived = getThresholddata(stationNumStr,'MHHW');
+        if (stationNum(i) >= 9450000) && (stationNum(i) < 9470000)
+            [skillOut]=HTF_skill(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i));
+        else    
+            minorThreshDerived = getThresholddata(stationNumStr,'MHHW');
         %[skillOut]=HTF_skill(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i));
-        [skillOut]=HTF_skill(stationNumStr,minorThreshDerived,slt(i),epochCenter(i));
-
+            [skillOut]=HTF_skill(stationNumStr,minorThreshDerived,slt(i),epochCenter(i));
+        end
         %Populate variables for output
         minorThresh(i)=skillOut.minorThresh;
         %For 1 mo lead time

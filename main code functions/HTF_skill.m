@@ -26,7 +26,7 @@ tidePred=resOut.predAdj;
 
 %% Output the metadata to the data structure
 skillOut.stationNum=stationNum;
-skillOut.minorThresh=minorThresh;
+skillOut.minorThresh=round(minorThresh,3);
 skillOut.slt=slt;
 skillOut.epochCenter=epochCenter;
 

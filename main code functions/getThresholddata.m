@@ -26,7 +26,7 @@ floodlevel_url = strcat(mdapi_url,StationID,...
 floodlevel = webread(floodlevel_url);
 % get NOS Minor flood threshold in meters relative to STND
 if ~isempty(floodlevel.nos_minor)
-    minor_floodlevel = floodlevel.nos_minor;
+    minor_floodlevel = floodlevel.nos_minor;      
 else
     minor_floodlevel = 0;
     floodlevel_datumbias = 1.95;
