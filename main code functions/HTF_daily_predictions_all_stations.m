@@ -108,9 +108,9 @@ if ~isempty(find(strcmp(varargin, 'prediction')))
         if (stationNum(i) >= 9450000) && (stationNum(i) < 9470000)
             [~] = HTF_predict(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i),[],[],[],[]);
         else
-            minorThreshDerived = getThresholddata(stationNumStr,'MHHW');
+            minorThreshAPI = getThresholddata(stationNumStr,'MHHW');
         %[~] = HTF_predict(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i),[],[],[],[]);
-            [~] = HTF_predict(stationNumStr,minorThreshDerived,slt(i),epochCenter(i),[],[],[],[]);
+            [~] = HTF_predict(stationNumStr,minorThreshAPI,slt(i),epochCenter(i),[],[],[],[]);
         end    
     end
 
@@ -261,9 +261,9 @@ if ~isempty(find(strcmp(varargin, 'skill')))
         if (stationNum(i) >= 9450000) && (stationNum(i) < 9470000)
             [skillOut]=HTF_skill(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i));
         else    
-            minorThreshDerived = getThresholddata(stationNumStr,'MHHW');
+            minorThreshAPI = getThresholddata(stationNumStr,'MHHW');
         %[skillOut]=HTF_skill(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i));
-            [skillOut]=HTF_skill(stationNumStr,minorThreshDerived,slt(i),epochCenter(i));
+            [skillOut]=HTF_skill(stationNumStr,minorThreshAPI,slt(i),epochCenter(i));
         end
         %Populate variables for output
         minorThresh(i)=skillOut.minorThresh;
