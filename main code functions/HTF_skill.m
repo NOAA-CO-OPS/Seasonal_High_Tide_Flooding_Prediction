@@ -26,7 +26,7 @@ tidePred=resOut.predAdj;
 
 %% Output the metadata to the data structure
 skillOut.stationNum=stationNum;
-skillOut.minorThresh=minorThresh;
+skillOut.minorThresh=round(minorThresh,3);
 skillOut.slt=slt;
 skillOut.epochCenter=epochCenter;
 
@@ -42,7 +42,14 @@ skillOut.leadTime=NaN(366,240);
 % Need to skip the first time
 %step since we don't have observations the month before, so filling the
 %dateTime values for comparing with obs later
-skillOut.dateTime(:,1)=resOut.yrMoTime(1):day(1):resOut.yrMoTime(1)+calmonths(12)-day(1);
+%check if there is a leap year
+if mod(year(resOut.yrMoTime(1)),4) == 0 && (mod(year(resOut.yrMoTime(1)),100) ~= 0 || mod(year(resOut.yrMoTime(1)),400) == 0)
+    skillOut.dateTime(:,1)=resOut.yrMoTime(1):day(1):resOut.yrMoTime(1)+calmonths(12);
+else
+    skillOut.dateTime(:,1)=resOut.yrMoTime(1):day(1):resOut.yrMoTime(1)+calmonths(12)-day(1);
+end    
+
+% original skillOut.dateTime(:,1)=resOut.yrMoTime(1):day(1):resOut.yrMoTime(1)+calmonths(12)-day(1);
 
 for i = 2:length(resOut.yrMoTime)
     disp(['Generating prediction starting in:' datestr(resOut.yrMoTime(i))]);
