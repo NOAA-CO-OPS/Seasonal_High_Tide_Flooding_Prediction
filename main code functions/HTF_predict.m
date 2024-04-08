@@ -151,16 +151,29 @@ else
     persApply = resOut.mu_monthAmly(amlyInd).*resOut.dampedPers(1:numMonths);
 end
 
+% **** CODE CHANGE HERE ON 4/8/24 TO PULL OUT MU, SIGMA CALC FROM CDF CALC ****
 
 %Allocate the distributions going forward in time
 for i = 1:numMonths
+
     %What is the month of the year for the month predicted 
     monthIn=monthList(i);
+
+    %For each of 10 deciles
     for j = 1:10
-        pd = makedist('Normal',resOut.mu_monthAvg(monthIn)+persApply(i)+resOut.decileMu(j),resOut.sigma_monthAvg(monthIn)+resOut.decileSigma(j));
-        cy(i,j,:) = 1-cdf(pd,px);
+
+        %What is the mu value for the distribution
+        muIn = resOut.mu_monthAvg(monthIn)+persApply(i)+resOut.decileMu(j);
+        %What is the sigma value for the distribution
+        sigmaIn = resOut.sigma_monthAvg(monthIn)+resOut.decileSigma(j);
+
+        %Calculate the cdf
+        cy(i,j,:) = cdf_calc(muIn,sigmaIn,px);
+
     end
 end
+
+% **** END CODE CHANGE ****
 
 %Apply the cdf to determine probability of exceedance each hour
 forecastProb=NaN(length(predAdj),1);
