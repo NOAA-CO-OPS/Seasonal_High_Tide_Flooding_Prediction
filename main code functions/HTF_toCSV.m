@@ -53,8 +53,10 @@ yflood = find(dailyProb >= 0.05);
 floodyn(yflood) = 1;
 
 %Create the table
+%tableOut = table(stationIDcol,timeVec(:,1),timeVec(:,2),timeVec(:,3),floodyn, floodCategoryCol, dailyProb', minorThresh, dailyFreeboard', HTFrunIDcol,...
+%    'VariableNames',{'STATION_ID', 'YEAR', 'MONTH', 'DAY', 'FLOOD', 'FLOOD_CATEGORY', 'LIKELIHOOD', 'MINOR_THRESH', 'DIST_TO_THRESH', 'HTB_RUN_ID'});
 tableOut = table(stationIDcol,timeVec(:,1),timeVec(:,2),timeVec(:,3),floodyn, floodCategoryCol, dailyProb', minorThresh, dailyFreeboard', HTFrunIDcol,...
-    'VariableNames',{'STATION_ID', 'YEAR', 'MONTH', 'DAY', 'FLOOD', 'FLOOD_CATEGORY', 'LIKELIHOOD', 'MINOR_THRESH', 'DIST_TO_THRESH', 'HTB_RUN_ID'});
+    'VariableNames',{'station_id', 'year', 'month', 'day', 'flood', 'flood_category', 'likelihood', 'minor_thresh', 'dist_to_thresh', 'htb_run_id'});
 
 %Create the filename for saving the csv
 startdate = string(dateTime(1),'yyyyMM');
