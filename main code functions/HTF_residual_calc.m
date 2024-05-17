@@ -20,6 +20,7 @@ load([stationNum,'_data']);
 wl=data.wl;
 pred=data.pred;
 dTime=data.dateTime;
+resOut.dateTime=dTime; % added to the output file
 
 % Convert the epoch center to a datetime
 epochYear=floor(epochCenter);
@@ -29,13 +30,8 @@ epochCenter=datetime(epochYear,1,1)+years(partialYear);
 %%
 %Add linear SLT to the predictions using the epoch center as 0 (should be
 %1992.5 for most cases here)
+[resOut.predAdj,resOut.sltAdd] = addTrend(pred,dTime,slt,epochCenter);
 
-slt=slt/1000; %change to meters
-startTrend= slt*years((dTime(1)-epochCenter)); %How much of the trend goes from the center epoch to the start date
-sltTotal=slt*years(dTime(end)-dTime(1)); % total change over the length of the predictions 
-resOut.sltAdd=startTrend+(sltTotal./length(pred)).*(0:1:length(pred)-1); % the time by time SLT addition
-resOut.predAdj=pred+resOut.sltAdd';
-resOut.dateTime=dTime;
 
 %%
 %calculate the residual between the SLT adjusted predictions and

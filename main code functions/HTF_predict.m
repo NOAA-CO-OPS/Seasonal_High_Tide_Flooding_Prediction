@@ -98,12 +98,7 @@ epochCenter=datetime(epochYear,1,1)+years(partialYear);
 %%
 %Add linear SLT to the predictions using the epoch center as 0 (should be
 %1992.5 for most cases here)
-
-slt=slt/1000; %change to meters
-startTrend= slt*years((dTime(1)-epochCenter)); %How much of the trend goes from the center epoch to the start date
-sltTotal=slt*years(dTime(end)-dTime(1)); % total change over the length of the predictions 
-sltAdd=startTrend+(sltTotal./length(pred)).*(0:1:length(pred)-1); % the time by time SLT addition
-predAdj=pred+sltAdd';
+[predAdj,~] = addTrend(pred,dTime,slt,epochCenter);
 
 
 %% 
