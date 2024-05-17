@@ -79,45 +79,11 @@ for i = 1:length(resOut.yrMoTime)
 end
   
 
-%% Cross correlation calculation
+%% Damped Persistence Calculation
 
-% Now perform a cross-correlation with the monthly anomaly to help determine 
-% the persistence length scale and damped persistence coefficient
+% Calculate the damped persistence values given the monthly anomalies
+[resOut.dampedPers] = dampedPersistance(resOut.mu_monthAmly,resOut.sigma_monthAmly, resOut.yrMoTime);
 
-%Need to first interp for NaNs in the mu_monthlyAmly and sigma data
-resOut.mu_monthAmlyInt=interpnan(resOut.mu_monthAmly,datenum(resOut.yrMoTime));
-resOut.sigma_monthAmlyInt=interpnan(resOut.sigma_monthAmly,datenum(resOut.yrMoTime));
-
-%now do the cross correlation for mu out 12 months (sigma is not
-%correlated)
-numLags=12;
-[r,~]=xcorr(resOut.mu_monthAmlyInt,numLags,'coef');
-muCorrMonths=r(numLags+2:end);
-
-
-
-%%
-% Create the damped persistence coefficient vector.  This is done by
-% finding the first autocorrelation value < the 95% confidence threshold
-% and setting the remaining coefficients of the 12 to 0.
-
-%Assuming a data record of 240 monthly mean values, the 95% confidence
-%value of the noise floor is 
-conf95 = sqrt(2)*erfcinv(2*.05/2);
-upconf = conf95/sqrt(240);
-
-%create the damped persistence vector
-dampedPers = muCorrMonths;
-
-%Find the first autocorrelation value <= the 95% conf
-firstZero=find(dampedPers <= upconf,1);
-
-%Set the months at that point and beyond to 0
-if ~isempty(firstZero)
-    dampedPers(firstZero:end)=0;
-end
-
-resOut.dampedPers=dampedPers;
 
 toc
 
