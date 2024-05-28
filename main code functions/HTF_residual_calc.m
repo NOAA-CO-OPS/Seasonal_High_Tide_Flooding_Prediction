@@ -39,8 +39,8 @@ epochCenter=datetime(epochYear,1,1)+years(partialYear);
 resOut.res=wl-resOut.predAdj;
 
 
-%% Function to calculate the mu and sigma climatological values by month and by decile
-[resOut.mu_monthAvg,resOut.sigma_monthAvg,resOut.decileMu,resOut.decileSigma,resOut.deciles] = dist_calc(dTime,resOut.res,resOut.predAdj);
+%% Function to calculate the mu and sigma climatological values by month and by percentile
+[resOut.mu_monthAvg,resOut.sigma_monthAvg,resOut.percentileMu,resOut.percentileSigma,resOut.percentiles] = dist_calc(dTime,resOut.res,resOut.predAdj);
 
 %% 
 

@@ -1,10 +1,10 @@
-function [monthMu,monthSigma,decileMu,decileSigma,deciles] = dist_calc(dTime,res,pred)
+function [monthMu,monthSigma,percentileMu,percentileSigma,percentiles] = dist_calc(dTime,res,pred)
 
 %DIST_CALC takes a time series of hourly non tidal residuals (NTR) and calculates
-% mu and std distribution parameters in both monthly and tidal decile
+% mu and std distribution parameters in both monthly and tidal percentile
 % partitions to give climatological parameters for each aspect of NTR.
 % Future changes may enable doing this as effectively a 2d distribution
-% (accross both month and decile (or some smaller wl partition) - e.g. the
+% (accross both month and percentile (or some smaller wl partition) - e.g. the
 % mu for the top 10% of predicted water levels for all januaries). This
 % code will also enable future changes to distributions other than normal.
 
@@ -17,9 +17,9 @@ function [monthMu,monthSigma,decileMu,decileSigma,deciles] = dist_calc(dTime,res
 % Outputs:
 % monthMu - monthly climatological mean (Jan to Dec)
 % monthSigma - monthly climatological std deviation
-% deciles - deciles used for calculating decile distributions
-% decileMu - decile climatological mu
-% decileSigma - decile climatological sigma
+% percentiles - percentiles used for calculating percentile distributions
+% percentileMu - percentile climatological mu
+% percentileSigma - percentile climatological sigma
 
 
 
@@ -61,32 +61,11 @@ monthMu=nanmean(mu_month_reshape);
 monthSigma=nanmean(sigma_month_reshape);
 
 
-%% DECILE PART
+%% PERCENTILE PART
 
-% calculate the deciles of the adjusted tide predictions and the
+% calculate the percentiles of the adjusted tide predictions (or just tides) and the
 % corresponding mu and sigma 
-
-%Calculate the decile of the tide predictions
-deciles=prctile(pred,[0:10:100]);
-%adding a 1m offset to ensure min and max are captured within bounds
-deciles(1)=deciles(1) - 1;
-deciles(11)=deciles(11) + 1;
-
-%Calculate the mu and sigma of the total data set
-allMu = nanmean(res);
-allSigma = nanstd(res);
-
-decileMu=NaN(10,1);
-decileSigma=NaN(10,1);
-
-%calculate the mu and sigma of the deciles and relate those back to the mu
-%and sigma of the total (we are assuming this relationship is independent
-%of time).
-for i = 1:10
-    decileMu(i)=nanmean(res(pred >= deciles(i) & pred <= deciles(i+1))) - allMu;
-    decileSigma(i)=nanstd(res(pred >= deciles(i) & pred <= deciles(i+1))) - allSigma;
-end
-
+[percentileMu, percentileSigma, percentiles] = percentile_calc(res, pred, 10);
 
 
 end

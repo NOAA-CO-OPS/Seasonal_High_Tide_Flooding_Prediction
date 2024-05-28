@@ -115,9 +115,12 @@ monthArray=month(dTime);
 monthList = unique(monthArray,'stable');
 numMonths=length(monthList);
 
-%calculate the cdf for each of the forward looking months (up to 12) and each of the 10 deciles
+%Num of percentiles
+numPercentiles = length(resOut.percentileMu);
+
+%calculate the cdf for each of the forward looking months (up to 12) and each of the percentiles
 px = -2:.005:15;
-cy=NaN(numMonths,10,length(px));
+cy=NaN(numMonths,numPercentiles,length(px));
 
 %Create the persistence vector by multiplying the damped persistence
 %coefficent vector with the most recent monthly anomaly value
@@ -154,13 +157,13 @@ for i = 1:numMonths
     %What is the month of the year for the month predicted 
     monthIn=monthList(i);
 
-    %For each of 10 deciles
-    for j = 1:10
+    %For each of percentiles
+    for j = 1:numPercentiles
 
         %What is the mu value for the distribution
-        muIn = resOut.mu_monthAvg(monthIn)+persApply(i)+resOut.decileMu(j);
+        muIn = resOut.mu_monthAvg(monthIn)+persApply(i)+resOut.percentileMu(j);
         %What is the sigma value for the distribution
-        sigmaIn = resOut.sigma_monthAvg(monthIn)+resOut.decileSigma(j);
+        sigmaIn = resOut.sigma_monthAvg(monthIn)+resOut.percentileSigma(j);
 
         %Calculate the cdf
         cy(i,j,:) = cdf_calc(muIn,sigmaIn,px);
@@ -176,8 +179,8 @@ forecastProb=NaN(length(predAdj),1);
 for i = 1:length(dTime)
     xVal=find(px > freeboard(i),1);
     monthIndex=find(monthList == month(dTime(i)));
-    decileInd=find(resOut.deciles <= predAdj(i),1,'last');
-    cyHour=cy(monthIndex,decileInd,:);
+    percentileInd=find(resOut.percentiles <= predAdj(i),1,'last');
+    cyHour=cy(monthIndex,percentileInd,:);
     forecastProb(i)=cyHour(xVal);
 end
 
