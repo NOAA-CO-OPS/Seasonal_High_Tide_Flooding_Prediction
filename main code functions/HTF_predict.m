@@ -98,12 +98,7 @@ epochCenter=datetime(epochYear,1,1)+years(partialYear);
 %%
 %Add linear SLT to the predictions using the epoch center as 0 (should be
 %1992.5 for most cases here)
-
-slt=slt/1000; %change to meters
-startTrend= slt*years((dTime(1)-epochCenter)); %How much of the trend goes from the center epoch to the start date
-sltTotal=slt*years(dTime(end)-dTime(1)); % total change over the length of the predictions 
-sltAdd=startTrend+(sltTotal./length(pred)).*(0:1:length(pred)-1); % the time by time SLT addition
-predAdj=pred+sltAdd';
+[predAdj,~] = addTrend(pred,dTime,slt,epochCenter);
 
 
 %% 
@@ -120,9 +115,12 @@ monthArray=month(dTime);
 monthList = unique(monthArray,'stable');
 numMonths=length(monthList);
 
-%calculate the cdf for each of the forward looking months (up to 12) and each of the 10 deciles
+%Num of percentiles
+numPercentiles = length(resOut.percentileMu);
+
+%calculate the cdf for each of the forward looking months (up to 12) and each of the percentiles
 px = -2:.005:15;
-cy=NaN(numMonths,10,length(px));
+cy=NaN(numMonths,numPercentiles,length(px));
 
 %Create the persistence vector by multiplying the damped persistence
 %coefficent vector with the most recent monthly anomaly value
@@ -151,16 +149,29 @@ else
     persApply = resOut.mu_monthAmly(amlyInd).*resOut.dampedPers(1:numMonths);
 end
 
+% **** CODE CHANGE HERE ON 4/8/24 TO PULL OUT MU, SIGMA CALC FROM CDF CALC ****
 
 %Allocate the distributions going forward in time
 for i = 1:numMonths
+
     %What is the month of the year for the month predicted 
     monthIn=monthList(i);
-    for j = 1:10
-        pd = makedist('Normal',resOut.mu_monthAvg(monthIn)+persApply(i)+resOut.decileMu(j),resOut.sigma_monthAvg(monthIn)+resOut.decileSigma(j));
-        cy(i,j,:) = 1-cdf(pd,px);
+
+    %For each of percentiles
+    for j = 1:numPercentiles
+
+        %What is the mu value for the distribution
+        muIn = resOut.mu_monthAvg(monthIn)+persApply(i)+resOut.percentileMu(j);
+        %What is the sigma value for the distribution
+        sigmaIn = resOut.sigma_monthAvg(monthIn)+resOut.percentileSigma(j);
+
+        %Calculate the cdf
+        cy(i,j,:) = cdf_calc(muIn,sigmaIn,px);
+
     end
 end
+
+% **** END CODE CHANGE ****
 
 %Apply the cdf to determine probability of exceedance each hour
 forecastProb=NaN(length(predAdj),1);
@@ -168,8 +179,8 @@ forecastProb=NaN(length(predAdj),1);
 for i = 1:length(dTime)
     xVal=find(px > freeboard(i),1);
     monthIndex=find(monthList == month(dTime(i)));
-    decileInd=find(resOut.deciles <= predAdj(i),1,'last');
-    cyHour=cy(monthIndex,decileInd,:);
+    percentileInd=find(resOut.percentiles <= predAdj(i),1,'last');
+    cyHour=cy(monthIndex,percentileInd,:);
     forecastProb(i)=cyHour(xVal);
 end
 
