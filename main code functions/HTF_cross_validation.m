@@ -35,45 +35,29 @@ training_years = training_startYear:training_endYear;
 %Load the data from the mat file
 load([stationNum,'_data_training']);
 
-% Remove entries with the specified year
-yearToRemove = training_years(1);
-disp(yearToRemove)
+%Convert structured array to table
+training_data_table = struct2table(data);
+%disp(size(training_data_table))
 
-% Test list
-%x = [datetime(2016,01,01), datetime(2016,01,02), datetime(2017,01,01), datetime(2018,01,01), datetime(2019,01,01)];
-%years_x = year(x);
-%rowsToKeep = years_x ~= yearToRemove;
-%disp(rowsToKeep)
+%Iterate through training years and create training datasets w/ 1 year
+%removed
+for i = 1:length(training_years)
+    % Remove entries with the specified year
+    yearToRemove = training_years(i);
+    disp(yearToRemove)
 
-% Extract year from datetime
-years = year(data.dateTime);
-rowsToKeep = years ~= yearToRemove;
+    % Extract year from datetime
+    years = year(training_data_table.dateTime); %from data table
+    rowsToKeep = years ~= yearToRemove;
+    %disp(size(rowsToKeep))
 
-% Remove rows from data based on logical index
-training_data = data(rowsToKeep);
-%display(training_data);
+    % Remove rows from data based on logical index
+    training_data = training_data_table(rowsToKeep,:);
+    %display(training_data);
 
-% Logical indexing to remove data for the specified year
-%training_data = training_data(years ~= yearToRemove);
-
-% Save the updated structured array
-filename = sprintf('%s_data_training_omit_%s',stationNumStr,num2str(yearToRemove));
-save(filename,'training_data');
-
-% Define hold out period
-%for i = 1:length(training_years)
-%    holdOutStart = datetime(training_years(i), 1, 1);
-    %disp(holdOutStart)
-%    holdOutEnd = datetime(training_years(i), 12, 31);
-    %disp(holdOutEnd)
-
-    % Remove hold out period from training set
-%    training_years_subset = setdiff(training_years, training_years(i));
-    %disp(training_years_subset)
-
-    % Add hold out period back to training set
-%    training_years_subset = [training_years_subset(1:i-1), training_years(i), training_years_subset(i+1:end)];
-    %disp(training_years_subset)
+    % Save the updated structured array
+    filename = sprintf('%s_data_training_omit_%s',stationNumStr,num2str(yearToRemove));
+    save(filename,'training_data');
 
 
 % Testing years
