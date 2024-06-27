@@ -17,11 +17,11 @@ stationNumStr = num2str(stationNum);
 % Download data
 disp('Running the data download on stations:')
 % Data for training
-[~] = HTF_data_pull(stationNumStr, training_startStr, training_endStr)
-[~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat'])
+[~] = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
+[~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat']);
 % Data for testing
-[~] = HTF_data_pull(stationNumStr, testing_startStr, testing_endStr)
-[~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_testing.mat'])
+[~] = HTF_data_pull(stationNumStr, testing_startStr, testing_endStr);
+[~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_testing.mat']);
 
 % Get list of years from training start and end dates
 training_startYear = year(datetime(training_startStr, 'InputFormat', 'yyyyMMdd'));
@@ -39,8 +39,8 @@ load([stationNum,'_data_training']);
 training_data_table = struct2table(data);
 %disp(size(training_data_table))
 
-%Iterate through training years and create training datasets w/ 1 year
-%removed
+%Iterate through training years and create training datasets that remove 
+%1 year at a time
 for i = 1:length(training_years)
     % Remove entries with the specified year
     yearToRemove = training_years(i);
@@ -52,12 +52,24 @@ for i = 1:length(training_years)
     %disp(size(rowsToKeep))
 
     % Remove rows from data based on logical index
-    training_data = training_data_table(rowsToKeep,:);
+    training_data_table_i = training_data_table(rowsToKeep,:);
     %display(training_data);
+    
+    % Convert the table to a structured array and save as "data"
+    data = table2struct(training_data_table_i,"ToScalar",true);
 
     % Save the updated structured array
     filename = sprintf('%s_data_training_omit_%s',stationNumStr,num2str(yearToRemove));
-    save(filename,'training_data');
+    save(filename,'data');
+    
+    % RESIDUAL CALC
+    % copy mat file
+    data = load(filename);
+    newdata = sprintf('%s_data.mat',stationNumStr);
+    save(newdata, '-struct', 'data')
+
+    [~] = HTF_residual_calc(stationNumStr, '1.96', '1992.50'); %hard coded for now
+
 
 
 % Testing years
