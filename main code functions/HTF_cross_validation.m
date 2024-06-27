@@ -63,12 +63,30 @@ for i = 1:length(training_years)
     save(filename,'data');
     
     % RESIDUAL CALC
-    % copy mat file
+    % copy mat file to fit HTF_residual_calc
     data = load(filename);
     newdata = sprintf('%s_data.mat',stationNumStr);
     save(newdata, '-struct', 'data')
 
-    [~] = HTF_residual_calc(stationNumStr, '1.96', '1992.50'); %hard coded for now
+    % Run HTF_residual_calc
+    [~] = HTF_residual_calc(stationNumStr, 1.96, 1992.50); %hard coded for now
+
+    % copy mat file
+    resOut = load(sprintf('%s_res',stationNumStr));
+    newres = sprintf('%s_res_training_omit_%s',stationNumStr,num2str(yearToRemove));
+    save(newres,'-struct','resOut');
+
+    % PREDICTION
+    data = load(sprintf('%s_data',stationNumStr));
+    % Run HTF_predict
+    [~] = HTF_predict(stationNumStr,0.304,1.96,1992.50,[],[],[],[]);
+
+    % copy mat file
+    predOut = load(sprintf('%s_pred',stationNumStr));
+    newpred = sprintf('%s_pred_training_omit_%s',stationNumStr,num2str(yearToRemove));
+    save(newpred,'-struct','predOut');
+
+
 
 
 
