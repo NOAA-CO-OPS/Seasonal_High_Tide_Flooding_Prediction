@@ -1,4 +1,5 @@
-function HTF_cross_validation(stationNum, training_startStr, training_endStr, testing_startStr, testing_endStr)
+function HTF_cross_validation(stationNum, training_startStr, training_endStr, ...
+    testing_startStr, testing_endStr, minorThresh, slt, epochCenter)
 
 %Function to conduct cross validation of monthly high tide flooding outlook
 %model.
@@ -20,7 +21,7 @@ disp('Running the data download on stations:')
 [~] = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
 [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat']);
 % Data for testing
-[~] = HTF_data_pull(stationNumStr, testing_startStr, testing_endStr);
+test_data = HTF_data_pull(stationNumStr, testing_startStr, testing_endStr);
 [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_testing.mat']);
 
 % Get list of years from training start and end dates
@@ -31,6 +32,15 @@ training_endYear = year(datetime(training_endStr, 'InputFormat', 'yyyyMMdd'));
 % Create list of training years
 training_years = training_startYear:training_endYear;
 %disp(training_years);
+
+% Testing date range
+%testing_startYear = year(datetime(testing_startStr, 'InputFormat', 'yyyyMMdd'));
+%testing_endYear = year(datetime(testing_endStr, 'InputFormat', 'yyyyMMdd'));
+testing_startDate = datetime(testing_startStr, 'InputFormat', 'yyyyMMdd');
+testing_endDate = datetime(testing_endStr, 'InputFormat', 'yyyyMMdd');
+testing_startMonth = datestr(testing_startDate, 'yyyymm');
+testing_endMonth = datestr(testing_endDate, 'yyyymm');
+
 
 %Load the data from the mat file
 load([stationNum,'_data_training']);
@@ -69,40 +79,52 @@ for i = 1:length(training_years)
     save(newdata, '-struct', 'data')
 
     % Run HTF_residual_calc
-    [~] = HTF_residual_calc(stationNumStr, 1.96, 1992.50); %hard coded for now
+    resOut = HTF_residual_calc(stationNumStr, slt, epochCenter); 
 
     % copy mat file
-    resOut = load(sprintf('%s_res',stationNumStr));
+    resOut_copy = load(sprintf('%s_res',stationNumStr));
     newres = sprintf('%s_res_training_omit_%s',stationNumStr,num2str(yearToRemove));
-    save(newres,'-struct','resOut');
+    save(newres,'-struct','resOut_copy');
 
-    % PREDICTION
-    data = load(sprintf('%s_data',stationNumStr));
+    % PREDICTION % Do we need to generate predictions for each training
+    % set? I think the predictions are just needed for validation of the test set. 
+    %data = load(sprintf('%s_data',stationNumStr));
     % Run HTF_predict
-    [~] = HTF_predict(stationNumStr,0.304,1.96,1992.50,[],[],[],[]);
+    %[~] = HTF_predict(stationNumStr,minorThresh,slt,epochCenter,[],[],[],[]); %do you need to pass resOut?
 
     % copy mat file
-    predOut = load(sprintf('%s_pred',stationNumStr));
-    newpred = sprintf('%s_pred_training_omit_%s',stationNumStr,num2str(yearToRemove));
+    %predOut = load(sprintf('%s_pred',stationNumStr));
+    %newpred = sprintf('%s_pred_training_omit_%s',stationNumStr,num2str(yearToRemove));
+    %save(newpred,'-struct','predOut');
+
+    % VALIDATE MODEL FOR TEST YEARS
+    % PREDICTION
+    % Run HTF_predict
+    predOut = HTF_predict(stationNumStr,minorThresh,slt,epochCenter,...
+                      testing_startMonth,testing_endMonth,resOut,test_data); 
+
+    % copy mat file
+    newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(yearToRemove));
+    %newpred = sprintf('%s_pred_training_omit_%s',stationNumStr,num2str(yearToRemove));
     save(newpred,'-struct','predOut');
 
+    % SKILL ASSESSMENT
+    % Run HTF_cross_valid_skill
+    skillOut = HTF_cross_valid_skill(stationNumStr,minorThresh,slt,epochCenter,...
+                                     testing_startDate, testing_endDate,...
+                                     test_data,resOut,predOut);
+
+    % copy mat file
+    newskill = sprintf('%s_skill_test_omit_%s',stationNumStr,num2str(yearToRemove));
+    save(newskill,'-struct','skillOut');
 
 
 
 
-% Testing years
-testing_startYear = year(datetime(testing_startStr, 'InputFormat', 'yyyyMMdd'));
-testing_endYear = year(datetime(testing_endStr, 'InputFormat', 'yyyyMMdd'));
 
-% Create list of testing years
-testing_years = testing_startYear:testing_endYear;
-%disp(testing_years)
-
-
-
-%Run HTF_daily_predictions_all_stations.m to generate parameters and to
-%make forecasts.
-
+% Need to generate predictions with resOut from each training model
+% Need to validate model for test set
+% Average the results to get the final score
 
 
 end
