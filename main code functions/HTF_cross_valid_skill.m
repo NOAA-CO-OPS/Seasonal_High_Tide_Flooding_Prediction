@@ -52,21 +52,34 @@ skillOut.leadTime=NaN(366,240);
 %disp(size(data.dateTime(1):day(1):data.dateTime(1)+calmonths(12)));
 %disp(size(skillOut.dateTime(:,1)));
 %disp(size(linspace(datetime('2020-01-01'),datetime('2020-12-31'),366)'));
+testing_dateArray = testing_startDate:testing_endDate;
+subset_endDate = testing_startDate + calmonths(12);
 if mod(year(data.dateTime(1)),4) == 0 && (mod(year(data.dateTime(1)),100) ~= 0 || mod(year(data.dateTime(1)),400) == 0)
     %skillOut.dateTime(:,1)=data.dateTime(1):day(1):data.dateTime(1)+calmonths(12);
     %skillOut.dateTime(:,1)=datetime('2020-01-01'):day(1):datetime('2020-01-01')+calmonths(12);
-    skillOut.dateTime(:,1)=linspace(testing_startDate,testing_startDate+calmonths(12),366)';
+    %skillOut.dateTime(:,1)=linspace(testing_startDate,testing_startDate+calmonths(12),366)';
+    fprintf('testing_startDate: %s\n', datestr(testing_startDate));
+    fprintf('testing_dateArray(1): %s\n', datestr(testing_dateArray(1)));
+    %skillOut.dateTime(:,1)=testing_dateArray(1):days(1):subset_endDate;
+    skillOut.dateTime(:,1)=transpose(testing_dateArray(1):days(1):subset_endDate-days(1));
+    fprintf('leap year size(skillOut.dateTime: %s\n',size(skillOut.dateTime));
 else
     %skillOut.dateTime(:,1)=data.dateTime(1):day(1):data.dateTime(1)+calmonths(12)-day(1);
     %skillOut.dateTime(:,1)=datetime('2020-01-01'):day(1):datetime('2020-01-01')+calmonths(12)-day(1);
-    skillOut.dateTime(:,1)=linspace(testing_startDate,testing_endDate,365)';
+    %skillOut.dateTime(:,1)=linspace(testing_startDate,testing_endDate,365)';
+    %skillOut.dateTime(:,1)=testing_dateArray(1):days(1):testing_dateArray(1)+calmonths(12)-days(1)
+    skillOut.dateTime(:,1)=transpose(testing_dateArray(1):days(1):testing_dateArray(1)+calmonths(12)-days(2));
+    fprintf('non-leap year size(skillOut.dateTime: %s\n',size(skillOut.dateTime));
 end   
 
 
 % original skillOut.dateTime(:,1)=resOut.yrMoTime(1):day(1):resOut.yrMoTime(1)+calmonths(12)-day(1);
 
-for i = 2:days(testing_endDate - testing_startDate)
-    disp(['Formatting prediction starting in:' datestr(testing_startDate)]);
+%for i = 2:days(testing_endDate - testing_startDate)
+
+for i = 2:length(testing_dateArray)
+disp(i)
+    disp(['Formatting prediction starting in:' datestr(testing_dateArray(i))]);
 
     %For the end of the time series, need to shorten the prediction window
     %since we won't have data beyond the present month
