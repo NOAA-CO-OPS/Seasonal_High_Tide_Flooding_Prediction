@@ -14,6 +14,7 @@ function [resOut] = HTF_residual_calc(stationNum,slt,epochCenter)
 
 tic
 %%
+
 %Load the data from the mat file
 load([stationNum,'_data']);
 

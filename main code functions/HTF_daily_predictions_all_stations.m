@@ -106,7 +106,10 @@ if ~isempty(find(strcmp(varargin, 'prediction')))
         stationNumStr=num2str(stationNum(i));
         disp(stationNumStr)
         if (stationNum(i) >= 9450000) && (stationNum(i) < 9470000)
-            [~] = HTF_predict(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i),[],[],[],[]);
+           % [~] =
+           HTF_predict(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i),[],[],[],[]);
+           % Karen - change to get NWS minor instead of NOS
+           %[~] = HTF_predict(stationNumStr,minorThreshNWS(i),slt(i),epochCenter(i),[],[],[],[]);
         else
             minorThreshAPI = getThresholddata(stationNumStr,'MHHW');
         %[~] = HTF_predict(stationNumStr,minorThreshDerived(i),slt(i),epochCenter(i),[],[],[],[]);
@@ -137,7 +140,7 @@ if ~isempty(find(strcmp(varargin, 'csv')))
         all_data{ii} = readtable(full_file_names{ii});
     end    
     
-    % concatenate all the tables inot one big table and write it to output
+    % concatenate all the tables into one big table and write it to output
     % file
     %writetable(cat(1,all_data{:}),output_file);
     writetable(cat(1,all_data{:}),output_file,'Delimiter', ',');

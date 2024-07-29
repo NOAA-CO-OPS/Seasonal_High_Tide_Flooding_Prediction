@@ -22,7 +22,7 @@ function [skillOut]=HTF_skill(stationNum,minorThresh,slt,epochCenter,testing_sta
 
 wl=data.wl;
 dTime=data.dateTime;
-tidePred=resOut.predAdj; % Karen question - why is predAdj needed for skill assessment?
+tidePred=resOut.predAdj; 
 
 %% Output the metadata to the data structure
 skillOut.stationNum=stationNum;
@@ -35,10 +35,21 @@ skillOut.epochCenter=epochCenter;
 %cover the entire 20 year observation period.  
 % 
 %Set up the skill matrices
-skillOut.dateTime=NaT(366,240);
-skillOut.prob=NaN(366,240);
-skillOut.leadTime=NaN(366,240);
-% 
+
+% Karen - for cross-validation, I don't think we need these in 366 row
+% matrices because we've already created the predictions for the test data
+%skillOut.dateTime=NaT(366,240);
+%skillOut.prob=NaN(366,240);
+%skillOut.leadTime=NaN(366,240);
+
+% Karen - NEW skillOut.dateTime, prob, and leadTime
+skillOut.dateTime = transpose(unique(dateshift(predOut.dateTime, 'start', 'day')));
+numCols = size(skillOut.dateTime, 2);
+numRows = size(skillOut.dateTime, 1);
+skillOut.prob = NaN(numRows, numCols);
+skillOut.leadTime = NaN(numRows, numCols);
+
+
 % Need to skip the first time
 %step since we don't have observations the month before, so filling the
 %dateTime values for comparing with obs later
@@ -52,34 +63,38 @@ skillOut.leadTime=NaN(366,240);
 %disp(size(data.dateTime(1):day(1):data.dateTime(1)+calmonths(12)));
 %disp(size(skillOut.dateTime(:,1)));
 %disp(size(linspace(datetime('2020-01-01'),datetime('2020-12-31'),366)'));
+testing_startDate.Format = 'dd-MMM-yyyy';
+testing_endDate.Format = 'dd-MMM-yyyy';
 testing_dateArray = testing_startDate:testing_endDate;
 subset_endDate = testing_startDate + calmonths(12);
-if mod(year(data.dateTime(1)),4) == 0 && (mod(year(data.dateTime(1)),100) ~= 0 || mod(year(data.dateTime(1)),400) == 0)
+
+% Karen - I don't think we need this part
+%if mod(year(data.dateTime(1)),4) == 0 && (mod(year(data.dateTime(1)),100) ~= 0 || mod(year(data.dateTime(1)),400) == 0)
     %skillOut.dateTime(:,1)=data.dateTime(1):day(1):data.dateTime(1)+calmonths(12);
     %skillOut.dateTime(:,1)=datetime('2020-01-01'):day(1):datetime('2020-01-01')+calmonths(12);
     %skillOut.dateTime(:,1)=linspace(testing_startDate,testing_startDate+calmonths(12),366)';
-    fprintf('testing_startDate: %s\n', datestr(testing_startDate));
-    fprintf('testing_dateArray(1): %s\n', datestr(testing_dateArray(1)));
+    %fprintf('testing_startDate: %s\n', datestr(testing_startDate));
+    %fprintf('testing_dateArray(1): %s\n', datestr(testing_dateArray(1)));
     %skillOut.dateTime(:,1)=testing_dateArray(1):days(1):subset_endDate;
-    skillOut.dateTime(:,1)=transpose(testing_dateArray(1):days(1):subset_endDate-days(1));
-    fprintf('leap year size(skillOut.dateTime: %s\n',size(skillOut.dateTime));
-else
+%    skillOut.dateTime(:,1)=transpose(testing_dateArray(1):days(1):subset_endDate-days(1));
+%    fprintf('leap year size(skillOut.dateTime: %s\n',size(skillOut.dateTime));
+%else
     %skillOut.dateTime(:,1)=data.dateTime(1):day(1):data.dateTime(1)+calmonths(12)-day(1);
     %skillOut.dateTime(:,1)=datetime('2020-01-01'):day(1):datetime('2020-01-01')+calmonths(12)-day(1);
     %skillOut.dateTime(:,1)=linspace(testing_startDate,testing_endDate,365)';
     %skillOut.dateTime(:,1)=testing_dateArray(1):days(1):testing_dateArray(1)+calmonths(12)-days(1)
-    skillOut.dateTime(:,1)=transpose(testing_dateArray(1):days(1):testing_dateArray(1)+calmonths(12)-days(2));
-    fprintf('non-leap year size(skillOut.dateTime: %s\n',size(skillOut.dateTime));
-end   
+%    skillOut.dateTime(:,1)=transpose(testing_dateArray(1):days(1):testing_dateArray(1)+calmonths(12)-days(2));
+%    fprintf('non-leap year size(skillOut.dateTime: %s\n',size(skillOut.dateTime));
+%end   
 
 
 % original skillOut.dateTime(:,1)=resOut.yrMoTime(1):day(1):resOut.yrMoTime(1)+calmonths(12)-day(1);
 
 %for i = 2:days(testing_endDate - testing_startDate)
 
-for i = 2:length(testing_dateArray)
-disp(i)
-    disp(['Formatting prediction starting in:' datestr(testing_dateArray(i))]);
+%for i = 2:length(testing_dateArray)
+    %disp(i)
+    %disp(['Formatting prediction starting in:' datestr(testing_dateArray(i))]);
 
     %For the end of the time series, need to shorten the prediction window
     %since we won't have data beyond the present month
@@ -89,16 +104,33 @@ disp(i)
     %    [predOut] = HTF_predict(stationNum,minorThresh,slt,epochCenter,datestr(resOut.yrMoTime(i),'yyyymm'),[],resOut,data);
     %end
     
-    skillOut.prob(1:length(predOut.dailyProb),i)=predOut.dailyProb;
-    skillOut.dateTime(1:length(predOut.dailyProb),i)=predOut.dailyProbTime;
+    % Karen - This is where you can fix skill out. adding data to ith column
+    % Need to figure out how to break these into year long chunks that
+    % increment up 1 day with each ith column
+    %skillOut.prob(1:length(predOut.dailyProb),i)=predOut.dailyProb;
+    %skillOut.dateTime(1:length(predOut.dailyProb),i)=predOut.dailyProbTime;
+    %Incorrect-skillOut.prob(1:length(predOut.dailyProb),i)=predOut.dailyProb(i:366);
+    %Incorrect-skillOut.dateTime(1:length(predOut.dailyProb),i)=predOut.dailyProbTime(i:366);
+    
+    %Karen - trying to increment up 1 day
+    % Get the number of columns
+%    numCols = size(predOut.dailyProb, 2);
+
+    % Loop through each column and increment the datetime
+%    for j = 1:numCols
+%        testing_startDate = predOut.dailyProbTime + caldays(j-1);
+
+%        skillOut.dateTime(:, j) = testing_startDate + caldays(0:length(predOut.dailyProb)-1);
+%    end    
+
     %I want to create a corresponding matrix to indicate the forecast lead
     %time for each value
-    monthsOrder=month(predOut.dailyProbTime);
-    change_positions = [1 diff(monthsOrder)~=0] == 1;
-    count_array = 1:length(find(change_positions));
-    leadMonths = count_array(cumsum(change_positions));
-    skillOut.leadTime(1:length(predOut.dailyProb),i)=leadMonths;
-end
+%    monthsOrder=month(predOut.dailyProbTime);
+%    change_positions = [1 diff(monthsOrder)~=0] == 1;
+%    count_array = 1:length(find(change_positions));
+%    leadMonths = count_array(cumsum(change_positions));
+%    skillOut.leadTime(1:length(predOut.dailyProb),i)=leadMonths;
+%end
 
 %% 
 %Now I need to go day by day and set up the obs in daily max and then flag
@@ -119,6 +151,7 @@ for i =1:nDays
     dayInd = i*24-23:i*24;
     dTimeDays(i)=dTime(dayInd(1));
     [dailyObs(i),~]=max(wl(dayInd));
+    disp(dailyObs(i));
     [dailyTidePred(i),~]=max(tidePred(dayInd));
     if dailyObs(i) >= minorThresh
         ynObs(i)=1; 

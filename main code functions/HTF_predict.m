@@ -85,6 +85,7 @@ elseif skillAssessment == 'y'
     %Note that backward looking predictions for model creation are
     %generated in UTC, so daylight savings need-not be addressed.
     dTime = startTime:hours(1):endTime;
+    %display(fieldnames(data));
     timeInd=find(data.dateTime >= startTime & data.dateTime <= endTime);
     pred = data.pred(timeInd);
 end
