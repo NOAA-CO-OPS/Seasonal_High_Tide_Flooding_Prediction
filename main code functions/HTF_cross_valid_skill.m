@@ -167,19 +167,21 @@ end
 %of daily predictions for each month, with the exception of the beginning
 %of the data set).
 
+% ???? - Karen - Is this needed for cross-validation
 dailyProb=NaN(12,length(dailyObs));
 dailyTime=NaT(12,length(dailyObs));
 dailyLead=NaN(12,length(dailyObs));
-for i = 1:length(dailyObs)
-    [ind] = find(skillOut.dateTime == dTimeDays(i));
-    dailyProb(1:length(ind),i)=flip(skillOut.prob(ind));
-    dailyTime(1:length(ind),i)=flip(skillOut.dateTime(ind));
-    dailyLead(1:length(ind),i)=flip(skillOut.leadTime(ind));
-end
+% for i = 1:length(dailyObs)
+%    [ind] = find(skillOut.dateTime == dTimeDays(i));
+%    dailyProb(1:length(ind),i)=flip(skillOut.prob(ind));
+%    dailyTime(1:length(ind),i)=flip(skillOut.dateTime(ind));
+%    dailyLead(1:length(ind),i)=flip(skillOut.leadTime(ind));
+%end
 
 %Output daily probabilities, where from top to bottom matrix goes from 1
 %months lead time to 12 months lead
-skillOut.dailyProb=dailyProb;
+%skillOut.dailyProb=dailyProb; % Karen - changed 7/30/24
+skillOut.dailyProb = transpose(predOut.dailyProb);
 skillOut.dailyProbTime=dTimeDays;
 skillOut.dailyObs=dailyObs;
 skillOut.ynObs=ynObs;
@@ -190,61 +192,83 @@ skillOut.dailyTidePred=dailyTidePred;
 %Now calculate some skill estimates for the forecast over the total time
 %window
 
-skillOut.totalYes=nansum(ynObs);
-skillOut.fracYes=skillOut.totalYes/length(find(isfinite(ynObs)));
-skillOut.bs=NaN(12,1);
-skillOut.bss=NaN(12,1);
-skillOut.bsSE=NaN(12,1);
-skillOut.bssSE=NaN(12,1);
-skillOut.recall=NaN(12,1);
-skillOut.falseAlarm=NaN(12,1);
+%skillOut.totalYes=nansum(ynObs);
+%skillOut.fracYes=skillOut.totalYes/length(find(isfinite(ynObs)));
+%skillOut.bs=NaN(12,1);
+%skillOut.bss=NaN(12,1);
+%skillOut.bsSE=NaN(12,1);
+%skillOut.bssSE=NaN(12,1);
+%skillOut.recall=NaN(12,1);
+%skillOut.falseAlarm=NaN(12,1);
  
-for i = 1:12
+%for i = 1:12
     %Calculate Brier Scores and Brier Skill Scores by month lead time
-    [skillOut.bs(i),skillOut.bss(i),skillOut.bsSE(i),skillOut.bssSE(i)] = BrierScore(ynObs,skillOut.dailyProb(i,:));
+%    [skillOut.bs(i),skillOut.bss(i),skillOut.bsSE(i),skillOut.bssSE(i)] = BrierScore(ynObs,skillOut.dailyProb(i,:));
     %Calculate reliability stats (to plot with reliability diagrams)
-    skillOut.rel(i) = reliability(ynObs,skillOut.dailyProb(i,:));
+%    skillOut.rel(i) = reliability(ynObs,skillOut.dailyProb(i,:));
     %Confusion matrix and stats for the 5% warning threshold
-    skillOut.confusion05(i) = confusionStats(ynObs,skillOut.dailyProb(i,:),0.05);
+%    skillOut.confusion05(i) = confusionStats(ynObs,skillOut.dailyProb(i,:),0.05);
     %Output recall (fraction of flood events predicted) and false alarm
     %rates (no flood, but warned one might occur)
-    skillOut.recall(i)=skillOut.confusion05(i).recall;
-    skillOut.falseAlarm(i)=skillOut.confusion05(i).falseAlarm;
-end
+%    skillOut.recall(i)=skillOut.confusion05(i).recall;
+%    skillOut.falseAlarm(i)=skillOut.confusion05(i).falseAlarm;
+%end
+
+% Karen - For cross-validation, 1-month lead ONLY
+skillOut.totalYes = nansum(ynObs);
+skillOut.fracYes = skillOut.totalYes/length(find(isfinite(ynObs)));
+skillOut.bs = NaN(1,1);
+skillOut.bss = NaN(1,1);
+skillOut.bsSE = NaN(1,1);
+skillOut.bssSE = NaN(1,1);
+skillOut.recall = NaN(1,1);
+skillOut.falseAlarm = NaN(1,1);
+
+%Calculate Brier Scores and Brier Skill Scores by month lead time
+[skillOut.bs,skillOut.bss,skillOut.bsSE,skillOut.bssSE] = BrierScore(ynObs,skillOut.dailyProb);
+%Calculate reliability stats (to plot with reliability diagrams)
+skillOut.rel = reliability(ynObs,skillOut.dailyProb);
+%Confusion matrix and stats for the 5% warning threshold
+skillOut.confusion05 = confusionStats(ynObs,skillOut.dailyProb,0.05);
+%Output recall (fraction of flood events predicted) and false alarm
+%rates (no flood, but warned one might occur)
+skillOut.recall = skillOut.confusion05.recall;
+skillOut.falseAlarm = skillOut.confusion05.falseAlarm;
+
 
 %Now for the 1-month lead ONLY, calculate skill for the last 5 years and 10
 %years to assess potential influence of SLR
 
-yr10ind=find(skillOut.dailyProbTime >=skillOut.dailyProbTime(end)-years(10));
-yr5ind=find(skillOut.dailyProbTime >=skillOut.dailyProbTime(end)-years(5));
+%yr10ind=find(skillOut.dailyProbTime >=skillOut.dailyProbTime(end)-years(10));
+%yr5ind=find(skillOut.dailyProbTime >=skillOut.dailyProbTime(end)-years(5));
 
 %10yr
-skillOut.totalYes10yr=nansum(ynObs(yr10ind));
-skillOut.fracYes10yr=skillOut.totalYes10yr/length(find(isfinite(ynObs(yr10ind))));
-skillOut.bss10yr=NaN;
-skillOut.bss10yr=NaN;
-skillOut.bssSE10yr=NaN;
-skillOut.recall10yr=NaN;
-skillOut.falseAlarm10yr=NaN;
+%skillOut.totalYes10yr=nansum(ynObs(yr10ind));
+%skillOut.fracYes10yr=skillOut.totalYes10yr/length(find(isfinite(ynObs(yr10ind))));
+%skillOut.bss10yr=NaN;
+%skillOut.bss10yr=NaN;
+%skillOut.bssSE10yr=NaN;
+%skillOut.recall10yr=NaN;
+%skillOut.falseAlarm10yr=NaN;
 
-[~,skillOut.bss10yr,~,skillOut.bssSE10yr] = BrierScore(ynObs(yr10ind),skillOut.dailyProb(1,yr10ind));
-skillOut.confusion10yr = confusionStats(ynObs(yr10ind),skillOut.dailyProb(1,yr10ind),0.05);
-skillOut.recall10yr=skillOut.confusion10yr.recall;
-skillOut.falseAlarm10yr=skillOut.confusion10yr.falseAlarm;
+%[~,skillOut.bss10yr,~,skillOut.bssSE10yr] = BrierScore(ynObs(yr10ind),skillOut.dailyProb(1,yr10ind));
+%skillOut.confusion10yr = confusionStats(ynObs(yr10ind),skillOut.dailyProb(1,yr10ind),0.05);
+%skillOut.recall10yr=skillOut.confusion10yr.recall;
+%skillOut.falseAlarm10yr=skillOut.confusion10yr.falseAlarm;
 
 %5yr
-skillOut.totalYes5yr=nansum(ynObs(yr5ind));
-skillOut.fracYes5yr=skillOut.totalYes5yr/length(find(isfinite(ynObs(yr5ind))));
-skillOut.bss5yr=NaN;
-skillOut.bss5yr=NaN;
-skillOut.bssSE5yr=NaN;
-skillOut.recall5yr=NaN;
-skillOut.falseAlarm5yr=NaN;
+%skillOut.totalYes5yr=nansum(ynObs(yr5ind));
+%skillOut.fracYes5yr=skillOut.totalYes5yr/length(find(isfinite(ynObs(yr5ind))));
+%skillOut.bss5yr=NaN;
+%skillOut.bss5yr=NaN;
+%skillOut.bssSE5yr=NaN;
+%skillOut.recall5yr=NaN;
+%skillOut.falseAlarm5yr=NaN;
 
-[~,skillOut.bss5yr,~,skillOut.bssSE5yr] = BrierScore(ynObs(yr5ind),skillOut.dailyProb(1,yr5ind));
-skillOut.confusion5yr = confusionStats(ynObs(yr5ind),skillOut.dailyProb(1,yr5ind),0.05);
-skillOut.recall5yr=skillOut.confusion5yr.recall;
-skillOut.falseAlarm5yr=skillOut.confusion5yr.falseAlarm;
+%[~,skillOut.bss5yr,~,skillOut.bssSE5yr] = BrierScore(ynObs(yr5ind),skillOut.dailyProb(1,yr5ind));
+%skillOut.confusion5yr = confusionStats(ynObs(yr5ind),skillOut.dailyProb(1,yr5ind),0.05);
+%skillOut.recall5yr=skillOut.confusion5yr.recall;
+%skillOut.falseAlarm5yr=skillOut.confusion5yr.falseAlarm;
 
 
 %%
