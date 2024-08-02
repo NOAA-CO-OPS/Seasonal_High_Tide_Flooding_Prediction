@@ -151,7 +151,7 @@ for i =1:nDays
     dayInd = i*24-23:i*24;
     dTimeDays(i)=dTime(dayInd(1));
     [dailyObs(i),~]=max(wl(dayInd));
-    disp(dailyObs(i));
+    %disp(dailyObs(i));
     [dailyTidePred(i),~]=max(tidePred(dayInd));
     if dailyObs(i) >= minorThresh
         ynObs(i)=1; 
@@ -168,9 +168,9 @@ end
 %of the data set).
 
 % ???? - Karen - Is this needed for cross-validation
-dailyProb=NaN(12,length(dailyObs));
-dailyTime=NaT(12,length(dailyObs));
-dailyLead=NaN(12,length(dailyObs));
+%dailyProb=NaN(12,length(dailyObs));
+%dailyTime=NaT(12,length(dailyObs));
+%dailyLead=NaN(12,length(dailyObs));
 % for i = 1:length(dailyObs)
 %    [ind] = find(skillOut.dateTime == dTimeDays(i));
 %    dailyProb(1:length(ind),i)=flip(skillOut.prob(ind));

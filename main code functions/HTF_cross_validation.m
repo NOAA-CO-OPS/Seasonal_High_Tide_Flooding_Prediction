@@ -49,6 +49,9 @@ load([stationNum,'_data_training']);
 training_data_table = struct2table(data);
 %disp(size(training_data_table))
 
+%Create an array to store skill assessment output
+allskillOut = cell(1, length(training_years));
+
 %Iterate through training years and create training datasets that remove 
 %1 year at a time
 for i = 1:length(training_years)
@@ -113,18 +116,69 @@ for i = 1:length(training_years)
     skillOut = HTF_cross_valid_skill(stationNumStr,minorThresh,slt,epochCenter,...
                                      testing_startDate, testing_endDate,...
                                      test_data,resOut,predOut);
+    
+    allskillOut{i} = skillOut;
 
     % copy mat file
     newskill = sprintf('%s_skill_test_omit_%s',stationNumStr,num2str(yearToRemove));
     save(newskill,'-struct','skillOut');
 
+end
 
 
+%Set up the variables for the output table
+%minorThresh = NaN(1,1); %Karen - replace first 1 with n once using multiple stations. n is "n=length(stationNum);"
+%skillful = cell(1,1);
+%total_Floods = NaN(1,1);
+%mean_bss = NaN(1,1);
+%mean_bssSE = NaN(1,1);
+%mean_recall = NaN(1,1);
+%mean_falseAlarm = NaN(1,1);
 
-
-% Need to generate predictions with resOut from each training model
-% Need to validate model for test set
 % Average the results to get the final score
+totalFloodsValues = cellfun(@(s) s.totalYes, allskillOut); 
+total_Floods = mean(totalFloodsValues);
+disp(total_Floods);
 
+bssValues = cellfun(@(s) s.bss, allskillOut); 
+mean_bss = mean(bssValues);
+disp(mean_bss);
+
+bssSEValues = cellfun(@(s) s.bssSE, allskillOut);
+mean_bssSE = mean(bssSEValues);
+disp(mean_bssSE);
+
+recallValues = cellfun(@(s) s.recall, allskillOut);
+mean_recall = mean(recallValues);
+disp(mean_recall);
+
+falseAlarmValues = cellfun(@(s) s.falseAlarm, allskillOut);
+mean_falseAlarm = mean(falseAlarmValues);
+disp(mean_falseAlarm);
+
+if mean_bss >= mean_bssSE
+    skillful = 'yes';
+else
+    skillful = 'no';
+end    
+disp(skillful);
+
+%Define data to output to table
+output_data = {stationNumStr, minorThresh, total_Floods,skillful,mean_bss,...
+    mean_bssSE, mean_recall, mean_falseAlarm};
+output_columnNames = {'StationID','minorThresh','Total Floods', 'skillful'...
+    'avg_bss', 'avg_bssSE', 'avg_recall', 'avg_false_alarm'};
+output_cell_array = [output_columnNames; output_data];
+
+%Output table w/ average skill scores
+%HTFtable = table(stationNumStr,minorThresh,total_Floods,skillful,mean_bss,...
+%    mean_bssSE, mean_recall, mean_falseAlarm);
+%save('HTFtable.mat','HTFtable');
+
+%Create the filename for saving the HTF summary table csv
+tabfileName = strcat('HTF_crossvalid_skillsummary',testing_startStr,'_',testing_endStr,'.csv');
+%Write the file
+%writetable(HTFtable,tabfileName);
+writecell(output_cell_array,tabfileName);
 
 end
