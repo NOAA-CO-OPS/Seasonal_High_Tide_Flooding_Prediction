@@ -1,4 +1,4 @@
-function [skillOut]=HTF_skill(stationNum,minorThresh,slt,epochCenter,testing_startDate,testing_endDate,data,resOut,predOut)
+function [skillOut]=HTF_cross_valid_skill(stationNum,minorThresh,slt,epochCenter,testing_startDate,testing_endDate,data,resOut,predOut)
 
 %This function works with HTF_cross_validation.m and takes the data and residual output from the code
 %HTF_data_pull.m and HTF_residual_calc.m, calculates 12 month predictions
