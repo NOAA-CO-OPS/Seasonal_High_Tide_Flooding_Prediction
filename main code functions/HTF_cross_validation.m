@@ -55,6 +55,14 @@ testing_endMonth = datestr(testing_endDate, 'yyyymm');
 % list as in HTF_daily_predictions_all_stations.m
 %stationNumStr = num2str(stationNum);
 
+% Initialize empty array for output
+output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
+                       'avg_bss', 'avg_bssSE', 'avg_recall', 'avg_false_alarm'};
+output_cell_array = [];
+%output_cell_array = cell(n, length(output_columnNames));
+output_cell_array = [output_cell_array, output_columnNames];
+
+
 % Download data
 disp('Running the data download on stations:')
 
@@ -182,12 +190,13 @@ for stn_i = stationIndex
     end    
     %disp(skillful);
 
-%Define data to output to table
-output_data = {stationNumStr, minorThreshDerived, total_Floods,skillful,mean_bss,...
-    mean_bssSE, mean_recall, mean_falseAlarm};
-output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
-    'avg_bss', 'avg_bssSE', 'avg_recall', 'avg_false_alarm'};
-output_cell_array = [output_columnNames; output_data];
+    %Define data to output to table
+    output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,mean_bss,...
+                       mean_bssSE, mean_recall, mean_falseAlarm};
+    %disp(output_data)
+
+    output_cell_array = [output_cell_array; output_data];
+    
 
 %Output table w/ average skill scores
 %HTFtable = table(stationNumStr,minorThresh,total_Floods,skillful,mean_bss,...
