@@ -35,14 +35,10 @@ skillOut.epochCenter=epochCenter;
 %cover the entire 20 year observation period.  
 % 
 %Set up the skill matrices
-
-% Karen - for cross-validation, I don't think we need these in 366 row
-% matrices because we've already created the predictions for the test data
 %skillOut.dateTime=NaT(366,240);
 %skillOut.prob=NaN(366,240);
 %skillOut.leadTime=NaN(366,240);
 
-% Karen - NEW skillOut.dateTime, prob, and leadTime
 skillOut.dateTime = transpose(unique(dateshift(predOut.dateTime, 'start', 'day')));
 numCols = size(skillOut.dateTime, 2);
 numRows = size(skillOut.dateTime, 1);
@@ -60,15 +56,12 @@ skillOut.leadTime = NaN(numRows, numCols);
 %else
 %    skillOut.dateTime(:,1)=resOut.yrMoTime(1):day(1):resOut.yrMoTime(1)+calmonths(12)-day(1);
 %end   
-%disp(size(data.dateTime(1):day(1):data.dateTime(1)+calmonths(12)));
-%disp(size(skillOut.dateTime(:,1)));
-%disp(size(linspace(datetime('2020-01-01'),datetime('2020-12-31'),366)'));
+
 testing_startDate.Format = 'dd-MMM-yyyy';
 testing_endDate.Format = 'dd-MMM-yyyy';
 testing_dateArray = testing_startDate:testing_endDate;
 subset_endDate = testing_startDate + calmonths(12);
 
-% Karen - I don't think we need this part
 %if mod(year(data.dateTime(1)),4) == 0 && (mod(year(data.dateTime(1)),100) ~= 0 || mod(year(data.dateTime(1)),400) == 0)
     %skillOut.dateTime(:,1)=data.dateTime(1):day(1):data.dateTime(1)+calmonths(12);
     %skillOut.dateTime(:,1)=datetime('2020-01-01'):day(1):datetime('2020-01-01')+calmonths(12);
@@ -104,15 +97,11 @@ subset_endDate = testing_startDate + calmonths(12);
     %    [predOut] = HTF_predict(stationNum,minorThresh,slt,epochCenter,datestr(resOut.yrMoTime(i),'yyyymm'),[],resOut,data);
     %end
     
-    % Karen - This is where you can fix skill out. adding data to ith column
     % Need to figure out how to break these into year long chunks that
     % increment up 1 day with each ith column
     %skillOut.prob(1:length(predOut.dailyProb),i)=predOut.dailyProb;
     %skillOut.dateTime(1:length(predOut.dailyProb),i)=predOut.dailyProbTime;
-    %Incorrect-skillOut.prob(1:length(predOut.dailyProb),i)=predOut.dailyProb(i:366);
-    %Incorrect-skillOut.dateTime(1:length(predOut.dailyProb),i)=predOut.dailyProbTime(i:366);
-    
-    %Karen - trying to increment up 1 day
+
     % Get the number of columns
 %    numCols = size(predOut.dailyProb, 2);
 
@@ -167,7 +156,6 @@ end
 %of daily predictions for each month, with the exception of the beginning
 %of the data set).
 
-% ???? - Karen - Is this needed for cross-validation
 %dailyProb=NaN(12,length(dailyObs));
 %dailyTime=NaT(12,length(dailyObs));
 %dailyLead=NaN(12,length(dailyObs));
@@ -180,7 +168,7 @@ end
 
 %Output daily probabilities, where from top to bottom matrix goes from 1
 %months lead time to 12 months lead
-%skillOut.dailyProb=dailyProb; % Karen - changed 7/30/24
+%skillOut.dailyProb=dailyProb; 
 skillOut.dailyProb = transpose(predOut.dailyProb);
 skillOut.dailyProbTime=dTimeDays;
 skillOut.dailyObs=dailyObs;
@@ -214,7 +202,7 @@ skillOut.dailyTidePred=dailyTidePred;
 %    skillOut.falseAlarm(i)=skillOut.confusion05(i).falseAlarm;
 %end
 
-% Karen - For cross-validation, 1-month lead ONLY
+% For cross-validation, 1-month lead ONLY
 skillOut.totalYes = nansum(ynObs);
 skillOut.fracYes = skillOut.totalYes/length(find(isfinite(ynObs)));
 skillOut.bs = NaN(1,1);
