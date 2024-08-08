@@ -58,8 +58,8 @@ testing_endMonth = datestr(testing_endDate, 'yyyymm');
 % Download data
 disp('Running the data download on stations:')
 
-for stn = stationIndex
-    stationNumStr = num2str(stationNum(stn));
+for stn_i = stationIndex
+    stationNumStr = num2str(stationNum(stn_i));
     disp(stationNumStr)
     
     % Data for training
@@ -109,12 +109,9 @@ for stn = stationIndex
         data = load(filename);
         newdata = sprintf('%s_data.mat',stationNumStr);
         save(newdata, '-struct', 'data')
-        
-        disp("slt")
-        disp(slt)
 
         % Run HTF_residual_calc
-        resOut = HTF_residual_calc(stationNumStr, slt, epochCenter); 
+        resOut = HTF_residual_calc(stationNumStr, slt(stn_i), epochCenter(stn_i)); 
 
         % copy mat file
         resOut_copy = load(sprintf('%s_res',stationNumStr));
@@ -135,7 +132,7 @@ for stn = stationIndex
         % VALIDATE MODEL FOR TEST YEARS
         % PREDICTION
         % Run HTF_predict
-        predOut = HTF_predict(stationNumStr,minorThreshDerived,slt,epochCenter,...
+        predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
                       testing_startMonth,testing_endMonth,resOut,test_data); 
 
         % copy mat file
@@ -145,7 +142,7 @@ for stn = stationIndex
 
         % SKILL ASSESSMENT
         % Run HTF_cross_valid_skill
-        skillOut = HTF_cross_valid_skill(stationNumStr,minorThreshDerived,slt,epochCenter,...
+        skillOut = HTF_cross_valid_skill(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
                                      testing_startDate, testing_endDate,...
                                      test_data,resOut,predOut);
     
@@ -160,30 +157,30 @@ for stn = stationIndex
     % Average the results to get the final score
     totalFloodsValues = cellfun(@(s) s.totalYes, allskillOut); 
     total_Floods = mean(totalFloodsValues);
-    disp(total_Floods);
+    %disp(total_Floods);
 
     bssValues = cellfun(@(s) s.bss, allskillOut); 
     mean_bss = mean(bssValues);
-    disp(mean_bss);
+    %disp(mean_bss);
 
     bssSEValues = cellfun(@(s) s.bssSE, allskillOut);
     mean_bssSE = mean(bssSEValues);
-    disp(mean_bssSE);
+    %disp(mean_bssSE);
 
     recallValues = cellfun(@(s) s.recall, allskillOut);
     mean_recall = mean(recallValues);
-    disp(mean_recall);
+    %disp(mean_recall);
 
     falseAlarmValues = cellfun(@(s) s.falseAlarm, allskillOut);
     mean_falseAlarm = mean(falseAlarmValues);
-    disp(mean_falseAlarm);
+    %disp(mean_falseAlarm);
 
     if mean_bss >= mean_bssSE
         skillful = 'yes';
     else
         skillful = 'no';
     end    
-    disp(skillful);
+    %disp(skillful);
 
 %Define data to output to table
 output_data = {stationNumStr, minorThreshDerived, total_Floods,skillful,mean_bss,...
