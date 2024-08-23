@@ -1,19 +1,17 @@
 # Seasonal_High_Tide_Flooding_Prediction (Python)
 
 
-This is the Python translation of the code for the NOAA Seasonal-to-Annual High Tide Flooding Prediction Model. The model predicts the daily likelihood 
-of minor high tide flooding (exceeding the NOAA high tide flooding or HTF threshold) up to year in advance, given a hourly water level and tide prediction 
-time series from a NOAA tide gauge available in the CO-OPS data API. This model is described in detail in the following journal article:\
-\
-Dusek G, Sweet WV, Widlansky MJ, Thompson PR and Marra JJ (2022) A novel statistical approach to predict seasonal high tide flooding. Front. Mar. Sci. 9:1073792. doi: 10.3389/fmars.2022.1073792\
-\
+This is the Python translation of the code for the NOAA Seasonal-to-Annual High Tide Flooding Prediction Model. The model predicts the daily likelihood of minor high tide flooding (exceeding the NOAA high tide flooding or HTF threshold) up to year in advance, given a hourly water level and tide prediction time series from a NOAA tide gauge available in the CO-OPS data API. This model is described in detail in the following journal article:
+
+Dusek G, Sweet WV, Widlansky MJ, Thompson PR and Marra JJ (2022) A novel statistical approach to predict seasonal high tide flooding. *Front. Mar. Sci*. 9:1073792. doi: 10.3389/fmars.2022.1073792
+
 This is open access and available at: https://www.frontiersin.org/articles/10.3389/fmars.2022.1073792/full
 
 
 ## Table of Contents
 - [Installation](#installation)
 - [Usage](#usage)
-- [NOAA Open Source Disclaimer](#NOAA open source disclaimer)
+- [Disclaimer](#disclaimer)
 - [License](#license)
 - [Contact](#contact)
 
@@ -24,8 +22,9 @@ You can install the package using pip:
 
 ```bash
 pip install git+https://github.com/NOAA-CO-OPS/Seasonal_High_Tide_Flooding_Prediction.git@pyHTF
+```
 
-Or you can install it from source
+Or you can install it from source:
 
 ```bash
 git clone https://github.com/NOAA-CO-OPS/Seasonal_High_Tide_Flooding_Prediction.git
@@ -61,7 +60,8 @@ print(model.out_predict['prob_daily'])
 ```
 
 
-## NOAA Open Source Disclaimer
+## Disclaimer
+#### NOAA Open Source Disclaimer:
 
 This repository is a scientific product and is not official communication of the National Oceanic and Atmospheric Administration, 
 or the United States Department of Commerce. All NOAA GitHub project code is provided on an ?as is? basis and the user assumes responsibility for its use. 
@@ -81,8 +81,8 @@ create derivative works of the Software outside of the United States.
 
 ## Contact
 
-For additional information, contact:\
+For additional information, contact:
 
-Greg Dusek,\
+Greg Dusek\
 NOAA Center for Operational Oceanographic Products and Services\
 gregory.dusek@noaa.gov
