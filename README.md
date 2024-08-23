@@ -30,7 +30,7 @@ Or you can install it from source:
 git clone https://github.com/NOAA-CO-OPS/Seasonal_High_Tide_Flooding_Prediction.git
 cd Seasonal_High_Tide_Flooding_Prediction
 git checkout pyHTF
-pip install -e
+pip install -e .
 ```
 
 
