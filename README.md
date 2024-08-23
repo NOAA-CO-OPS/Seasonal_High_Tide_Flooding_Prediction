@@ -44,8 +44,8 @@ each day of 2002 at that location.
 from HTF import HTF_model
 
 model = HTF_model(station=8665530,
-				years_fit=[19830101,20011231],
-				years_assess=[19830101,20011231],
+		years_fit=[19830101,20011231],
+		years_assess=[19830101,20011231],
                 years_pred=[20020101,20021231],
                 assess_method='DusekEtAl',
                 assess_metric='htf_days',
