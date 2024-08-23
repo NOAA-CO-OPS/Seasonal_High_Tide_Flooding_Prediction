@@ -544,12 +544,12 @@ class get_API_data:
                 for i in range(len(datetimes_list)-1):                 
                     begin_dt_interval = datetimes_list[i]
                     end_dt_interval = datetimes_list[i+1]
-                    url = self.build_url(str(self.station),utils.dt2datestr(begin_dt_interval),
+                    url = self.build_url_dapi(str(self.station),utils.dt2datestr(begin_dt_interval),
                                     utils.dt2datestr(end_dt_interval),product=prod,
                                     units=self.units,datum_bias=self.datum_bias,
                                     time_zone=self.time_zone)
                     content = self.request_data(url)
-                    data1 = self.format_content(content)
+                    data1 = self.format_content_dapi(content)
                     if i==0:
                         data = data1
                     else:
@@ -557,14 +557,22 @@ class get_API_data:
                 data = data.drop_duplicates(subset='time', keep='first')
                 data = self.fill_gaps(data,begin_dt,end_dt)              
             else:
-                url = self.build_url(str(self.station),self.begin_date,
-                                self.end_date,product=prod,
-                                units=self.units,datum_bias=self.datum_bias,
-                                time_zone=self.time_zone)
-                content = self.request_data(url)
-                data = self.format_content(content)
-                data = self.fill_gaps(data,begin_dt,end_dt)
-                        
+                if prod not in ['datums','supersededdatums','harcon','sensors','details',
+                                   'notices','disclaimers','benchmarks','tidepredoffsets',
+                                   'floodlevels']:
+                    url = self.build_url_dapi(str(self.station),self.begin_date,
+                                    self.end_date,product=prod,
+                                    units=self.units,datum_bias=self.datum_bias,
+                                    time_zone=self.time_zone)
+                    content = self.request_data(url)
+                    data = self.format_content_dapi(content)
+                    data = self.fill_gaps(data,utils.datestr2dt(self.begin_date),utils.datestr2dt(self.end_date))
+                else:
+                     url = self.build_url_mdapi(str(self.station),
+                                                None,None,product=prod,units=self.units)
+                     content = self.request_data(url)
+                     data = self.format_content_mdapi(content)
+                     
             data_all[prod] = data
             
         return data_all
@@ -575,8 +583,9 @@ class get_API_data:
 
 
     @staticmethod
-    def build_url(station,begin_date,end_date,product='water_level',units='metric',
+    def build_url_dapi(station,begin_date,end_date,product='water_level',units='metric',
                      datum_bias='MHHW',time_zone='gmt'):
+        
         # CO-OPS API server #
         server = 'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?'
         
@@ -590,6 +599,16 @@ class get_API_data:
                  units + '&format=json')
         
         return url
+
+    @staticmethod
+    def build_url_mdapi(station,begin_date=None,end_date=None,product='details',units='metric'):
+        
+        # CO-OPS metadata API server #
+        server = 'https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/'
+        
+        url = (server + str(station) + '/'+product+'.json?units='+units)
+    
+        return url    
     
     @staticmethod
     def request_data(url):
@@ -597,7 +616,7 @@ class get_API_data:
         return content
     
     @staticmethod 
-    def format_content(content):
+    def format_content_dapi(content):
         if len(content)>1 or list(content.keys())[0]=='predictions': # len=1 indicates no data was found (just an eror message returned) #
             data_raw = content[list(content.keys())[-1]]
             data1 = []
@@ -611,6 +630,13 @@ class get_API_data:
                     'val':[]}
                    
         return pd.DataFrame(data_dict)
+    
+    @staticmethod 
+    def format_content_mdapi(content):
+        data_dict = {}
+        for key in list(content.keys()):
+            data_dict[key] = content[key]
+        return data_dict
     
     @staticmethod
     def fill_gaps(data,begin_date,end_date):
