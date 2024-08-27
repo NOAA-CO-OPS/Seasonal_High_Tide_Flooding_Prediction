@@ -16,6 +16,6 @@ setup(
     },
     include_package_data=True,
     install_requires=['datetime','numpy','pandas',
-                      'pkg_resources','requests','scipy',
+                      'pkg_resources','pytest','requests','scipy',
                       'sklearn','warnings'],
 )
