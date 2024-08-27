@@ -11,6 +11,7 @@ This is open access and available at: https://www.frontiersin.org/articles/10.33
 ## Table of Contents
 - [Installation](#installation)
 - [Usage](#usage)
+- [Test] (#test)
 - [Disclaimer](#disclaimer)
 - [License](#license)
 - [Contact](#contact)
@@ -56,6 +57,15 @@ model.predict()
 print('The daily likelihood of HTF is predicted to be:')
 print(model.out_predict['prob_daily'])
 ```
+
+
+## Test
+
+A test is also included to ensure the output of the translated model is consistent with main branch Matlab version. Running the test will automatically (temporarily) pull the master branch, run the model on the same data using the master branch and this branch, and ensure the outputs are the same. To run the test, simply do the following:
+
+```bash
+cd Seasonal_High_Tide_Flooding_Prediction
+pytest
 
 
 ## Disclaimer
