@@ -11,7 +11,7 @@ This is open access and available at: https://www.frontiersin.org/articles/10.33
 ## Table of Contents
 - [Installation](#installation)
 - [Usage](#usage)
-- [Test] (#test)
+- [Test](#test)
 - [Disclaimer](#disclaimer)
 - [License](#license)
 - [Contact](#contact)
