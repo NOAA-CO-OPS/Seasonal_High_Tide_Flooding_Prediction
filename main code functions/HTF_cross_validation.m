@@ -46,8 +46,11 @@ testing_endMonth = datestr(testing_endDate, 'yyyymm');
 
 
 % Initialize empty array for output
+%output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
+%                       'avg_bss', 'avg_bssSE', 'avg_recall', 'avg_false_alarm'};
+% Initialize empty array for output
 output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
-                       'avg_bss', 'avg_bssSE', 'avg_recall', 'avg_false_alarm'};
+                       'bss', 'bssSE', 'recall', 'false_alarm'};
 output_cell_array = [];
 %output_cell_array = cell(n, length(output_columnNames));
 output_cell_array = [output_cell_array, output_columnNames];
@@ -111,11 +114,14 @@ for stn_i = stationIndex
         newres = sprintf('%s_res_training_omit_%s',stationNumStr,num2str(yearToRemove));
         save(newres,'-struct','resOut_copy');
 
-        % VALIDATE MODEL FOR TEST YEARS
+        % RUN MODEL FOR TEST YEARS
         % PREDICTION
         % Run HTF_predict
         predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
                       testing_startMonth,testing_endMonth,resOut,test_data); 
+
+        %predOut_all(i) = predOut % Karen - 8/28/2024
+        %disp(predOut_all)
 
         % copy mat file
         newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(yearToRemove));
@@ -128,35 +134,59 @@ for stn_i = stationIndex
                                      test_data,resOut,predOut);
     
         allskillOut{i} = skillOut;
+        %allskillOut{stn_i} = skillOut;
 
         % copy mat file
         newskill = sprintf('%s_skill_test_omit_%s',stationNumStr,num2str(yearToRemove));
         save(newskill,'-struct','skillOut');
+        
+    % KAREN - 8/20 - Concatenate observations and predictions for
+    % all model runs ???
+        
 
     end
 
+    % Calculate the results for all training iterations 
+    % All observations of threshold being exceeded
+    ynObs_all = cellfun(@(s) s.ynObs,allskillOut);
+    disp(ynObs_all)
+
+    % All daily prob
+    dailyProb_all = cellfun(@(s) s.dailyProb,allskillOut);
+    disp(dailyProb_all)
+
+    % Brier skill score for all
+    [allskillOut.bs,allskillOut.bss,allskillOut.bsSE,allskillOut.bssSE] = BrierScore(ynObs,skillOut.dailyProb);
+
     % Average the results to get the final score
-    totalFloodsValues = cellfun(@(s) s.totalYes, allskillOut); 
-    total_Floods = mean(totalFloodsValues);
+    %totalFloodsValues = cellfun(@(s) s.totalYes, allskillOut); 
+    %total_Floods = mean(totalFloodsValues);
     %disp(total_Floods);
 
-    bssValues = cellfun(@(s) s.bss, allskillOut); 
-    mean_bss = mean(bssValues);
+    %bssValues = cellfun(@(s) s.bss, allskillOut); 
+    %mean_bss = mean(bssValues);
     %disp(mean_bss);
 
-    bssSEValues = cellfun(@(s) s.bssSE, allskillOut);
-    mean_bssSE = mean(bssSEValues);
+    %bssSEValues = cellfun(@(s) s.bssSE, allskillOut);
+    %mean_bssSE = mean(bssSEValues);
     %disp(mean_bssSE);
 
-    recallValues = cellfun(@(s) s.recall, allskillOut);
-    mean_recall = mean(recallValues);
+    %recallValues = cellfun(@(s) s.recall, allskillOut);
+    %mean_recall = mean(recallValues);
     %disp(mean_recall);
 
-    falseAlarmValues = cellfun(@(s) s.falseAlarm, allskillOut);
-    mean_falseAlarm = mean(falseAlarmValues);
+    %falseAlarmValues = cellfun(@(s) s.falseAlarm, allskillOut);
+    %mean_falseAlarm = mean(falseAlarmValues);
     %disp(mean_falseAlarm);
 
-    if mean_bss >= mean_bssSE
+    %if mean_bss >= mean_bssSE
+    %    skillful = 'yes';
+    %else
+    %    skillful = 'no';
+    %end    
+    %disp(skillful);
+    
+    if bss >= bssSE
         skillful = 'yes';
     else
         skillful = 'no';
@@ -164,14 +194,18 @@ for stn_i = stationIndex
     %disp(skillful);
 
     %Define data to output to table
-    output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,mean_bss,...
-                       mean_bssSE, mean_recall, mean_falseAlarm};
+    %output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,mean_bss,...
+    %                   mean_bssSE, mean_recall, mean_falseAlarm};
     %disp(output_data)
+    
+    output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,bss,...
+                       bssSE, recall, falseAlarm};
+    disp(output_data)
 
     output_cell_array = [output_cell_array; output_data];
     
 
-%Output table w/ average skill scores
+%Output table w/ skill scores
 
 %Create the filename for saving the HTF summary table csv
 tabfileName = strcat('HTF_crossvalid_skillsummary',testing_startStr,'_',testing_endStr,'.csv');

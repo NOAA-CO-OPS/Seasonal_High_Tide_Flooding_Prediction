@@ -22,7 +22,8 @@ function [skillOut]=HTF_cross_valid_skill(stationNum,minorThresh,slt,epochCenter
 
 wl=data.wl;
 dTime=data.dateTime;
-tidePred=resOut.predAdj; 
+%tidePred=resOut.predAdj; 
+
 
 %% Output the metadata to the data structure
 skillOut.stationNum=stationNum;
@@ -127,6 +128,7 @@ subset_endDate = testing_startDate + calmonths(12);
 
 %set up the output arrays
 nDays = ceil(days(dTime(end)-dTime(1)));
+disp(nDays)
 dTimeDays=NaT(nDays,1);
 ynObs=NaN(nDays,1);
 dailyObs=NaN(nDays,1);
@@ -141,7 +143,7 @@ for i =1:nDays
     dTimeDays(i)=dTime(dayInd(1));
     [dailyObs(i),~]=max(wl(dayInd));
     %disp(dailyObs(i));
-    [dailyTidePred(i),~]=max(tidePred(dayInd));
+    %[dailyTidePred(i),~]=max(tidePred(dayInd));
     if dailyObs(i) >= minorThresh
         ynObs(i)=1; 
     elseif isfinite(dailyObs(i))
@@ -173,7 +175,7 @@ skillOut.dailyProb = transpose(predOut.dailyProb);
 skillOut.dailyProbTime=dTimeDays;
 skillOut.dailyObs=dailyObs;
 skillOut.ynObs=ynObs;
-skillOut.dailyTidePred=dailyTidePred;
+%skillOut.dailyTidePred=dailyTidePred;
 
 
 %%
