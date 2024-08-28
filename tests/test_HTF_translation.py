@@ -5,7 +5,7 @@ Created on Wed Aug 21 16:12:38 2024
 @author: Matthew.Conlin
 """
 
-import HTF
+from HTF.HTF import HTF_model
 import numpy as np
 import os
 import pandas as pd
@@ -16,7 +16,7 @@ import stat
 import subprocess
 
 def run_model_py(station,years_fit,years_pred):
-    model = HTF.HTF_model(station,
+    model = HTF_model(station,
                     years_fit=years_fit,
                     years_assess=None,
                     years_pred=years_pred,
