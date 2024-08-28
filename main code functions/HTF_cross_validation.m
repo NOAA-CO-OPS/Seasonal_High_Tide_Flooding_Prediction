@@ -148,15 +148,28 @@ for stn_i = stationIndex
 
     % Calculate the results for all training iterations 
     % All observations of threshold being exceeded
-    ynObs_all = cellfun(@(s) s.ynObs,allskillOut);
-    disp(ynObs_all)
+    ynObs_all_fields = cellfun(@(s) s.ynObs, allskillOut, "UniformOutput", false);
+    ynObs_all_data = vertcat(ynObs_all_fields{:});
 
     % All daily prob
-    dailyProb_all = cellfun(@(s) s.dailyProb,allskillOut);
-    disp(dailyProb_all)
+    dailyProb_all_fields = cellfun(@(s) s.dailyProb, allskillOut, "UniformOutput", false);
+    dailyProb_all_data = vertcat(dailyProb_all_fields{:});
+    dailyProb_all = struct('dailyProb', dailyProb_all_data);
 
     % Brier skill score for all
-    [allskillOut.bs,allskillOut.bss,allskillOut.bsSE,allskillOut.bssSE] = BrierScore(ynObs,skillOut.dailyProb);
+    [bs, bss, bsSE, bssSE] = BrierScore(ynObs_all_data, dailyProb_all_data);
+    %disp(bs)
+
+    % Sum total floods
+    floods_all_fields = cellfun(@(s) s.totalYes, allskillOut, "UniformOutput", false);
+    floods_all_data = vertcat(floods_all_fields{:});
+    total_Floods = sum(floods_all_data);
+    %disp(total_Floods)
+
+    %Confusion matrix and stats for the 5% warning threshold
+    confusion05 = confusionStats(ynObs_all_data, dailyProb_all_data,0.05);
+    recall = confusion05.recall;
+    falseAlarm = confusion05.falseAlarm;
 
     % Average the results to get the final score
     %totalFloodsValues = cellfun(@(s) s.totalYes, allskillOut); 

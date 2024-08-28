@@ -22,7 +22,7 @@ function [skillOut]=HTF_cross_valid_skill(stationNum,minorThresh,slt,epochCenter
 
 wl=data.wl;
 dTime=data.dateTime;
-%tidePred=resOut.predAdj; 
+%tidePred=resOut.predAdj; % this does not function with cross-validation
 
 
 %% Output the metadata to the data structure
@@ -128,7 +128,6 @@ subset_endDate = testing_startDate + calmonths(12);
 
 %set up the output arrays
 nDays = ceil(days(dTime(end)-dTime(1)));
-disp(nDays)
 dTimeDays=NaT(nDays,1);
 ynObs=NaN(nDays,1);
 dailyObs=NaN(nDays,1);
