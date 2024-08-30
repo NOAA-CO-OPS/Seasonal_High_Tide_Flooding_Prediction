@@ -170,8 +170,8 @@ class HTF_model:
         if self.assess_method == 'DusekEtAl':
             # Run the trained model on the same data as it was trained on #
             print('Running the trained model on the same observations...')
-            self.out_assess = self.run(self.out_train['data'],
-                                       self.out_train) 
+            self.out_assess = self.run(self.out_train['data']['predictions'],
+                                       self.out_train)
             # Do the skill assessment #
             print('Calclating model skill on the same observations...')
             self.skill = self.calc_skill(self.out_train['data'],
@@ -185,7 +185,7 @@ class HTF_model:
             data = self.pull_data(self.loc,self.years_assess,'lst_ldt')           
             # Run the trained model on the new data #
             print('Running the trained model on the new observations...')
-            self.out_assess = self.run(data,self.out_train)                                                  
+            self.out_assess = self.run(data['predictions'],self.out_train)                                                  
             # Do the skill assessment #
             print('Calclating model skill on the new observations...')
             self.skill = self.calc_skill(data,self.out_assess,self.assess_metric)
@@ -214,13 +214,13 @@ class HTF_model:
 
         print('Generating predictions with the trained model...')
 
-        # Get the new out-of-training-sample data for the prediction #
-        print('Downloading and formatting the new out of sample observations. This can take a while...')
-        data = self.pull_data(self.loc,self.years_pred,'lst_ldt')           
+        # Get the predictions for the prediction period #
+        print('Getting the tide predictions for the prediction period...')
+        predictions = self.pull_predictions(self.loc,self.out_train,self.years_pred,'lst_ldt')           
         
         # Run the trained model on the new data #
-        print('Running the trained model on the new observations...')
-        self.out_predict = self.run(data,self.out_train) 
+        print('Running the trained model with the predictions...')
+        self.out_predict = self.run(predictions,self.out_train) 
 
            
     @staticmethod    
@@ -268,7 +268,7 @@ class HTF_model:
                                                          utils.datestr2dt(str(years[0])), 
                                                          utils.datestr2dt(str(years[1])))
             print('Calculating tidal constituents and predictions...')
-            predictions = CoraEngine.calc_predictions(hourly_height,loc[0])
+            predictions = CoraEngine.calc_predictions(hourly_height,loc[0],hourly_height['time'])
             print('Calculating sea level trend')
             slt = CoraEngine.calc_slt(hourly_height) 
             print('Assigning the epoch center as the middle of the dates')
@@ -314,19 +314,34 @@ class HTF_model:
             'dists_tide':dists_tide,
             'damped_per':damped_per}
    
-        return out     
+        return out
+
+    @staticmethod
+    def pull_predictions(loc,out_train,years,time_zone):
+        if isinstance(loc,int):
+            print('Downloading predictions for prediction window...')
+            predictions = get_API_data(loc, str(years[0]), str(years[1]),
+                                product='predictions',
+                                time_zone=time_zone).run()['predictions']                 
+        elif isinstance(loc,list):
+            dt_start = utils.datestr2dt(str(years[0]))
+            dt_end = utils.datestr2dt(str(years[1]))
+            dt_end = datetime.datetime(dt_end.year,dt_end.month,dt_end.day,23,0,0)
+            time_pred = pd.date_range(dt_start,dt_end,freq='h')
+            print('Calculating tidal predictions...')
+            predictions = CoraEngine.calc_predictions(out_train['data']['hourly_height'],loc[0],time_pred)
+        return predictions
     
     @staticmethod
-    def run(data,out_train):
+    def run(predictions,out_train):
         # Get the years and months on which to run the model #
-        yrmo = data['hourly_height']['time'].dt.to_period('M').unique()
+        yrmo = predictions['time'].dt.to_period('M').unique()
         yru = np.unique(yrmo.year)
         
         for yr in yru:
             # Get the observations for this year #
-            data_yr = data.copy()
-            for k in ['hourly_height','predictions']:
-                data_yr[k] = data_yr[k][data_yr[k]['time'].dt.year==yr]
+            data_yr = predictions.copy()
+            data_yr = data_yr[data_yr['time'].dt.year==yr]
                 
             # Get the anomoly value for the first month before this year, if it's available,
             # and use it to calculate the damped persistence to use. If it is not
@@ -349,23 +364,21 @@ class HTF_model:
             cy = ModelEngine.calc_cdf(px,
                                       mu,
                                       sigma)
-
-                    
+                   
             # Add the sea level trend to the predictions #
-            pred_adj,adj = ModelEngine.add_trend(data_yr['predictions'],
-                                                 data['SLT'],
-                                                 data['Epoch center'])
+            pred_adj,adj = ModelEngine.add_trend(data_yr,
+                                                 out_train['data']['SLT'],
+                                                 out_train['data']['Epoch center'])
             
             
             # Calculate hourly freeboard from flood thresh to adjusted predictions #
-            freeboard = ModelEngine.calc_freeboard(data['Flood thresh'],
+            freeboard = ModelEngine.calc_freeboard(out_train['data']['Flood thresh'],
                                                    pred_adj)
            
             # Apply cdfs to determine probability that the NTR is >freeboard
             # for each hourly observation #
             prob_hourly = ModelEngine.calc_hourly_prob(cy,
                                                      px,
-                                                     data_yr,
                                                      pred_adj,
                                                      freeboard,
                                                      out_train['dists_tide'])
@@ -918,7 +931,7 @@ class ModelEngine():
         return freeboard
 
     @staticmethod
-    def calc_hourly_prob(cy,px,data,pred_adj,freeboard,dists_tide):
+    def calc_hourly_prob(cy,px,pred_adj,freeboard,dists_tide):
         '''
         Apply cdfs to determine probability that the NTR is >freeboard
         for each hourly observation 
@@ -929,7 +942,7 @@ class ModelEngine():
         freeboard['prctile bin'] = pd.cut(pred_adj['val'],
                                          bins=pctile_bins,
                                          labels=False)
-        freeboard['month bin'] = pd.cut(data['hourly_height']['time'].dt.month,
+        freeboard['month bin'] = pd.cut(pred_adj['time'].dt.month,
                                          bins=np.arange(1,14),
                                          right=False,labels=False)
         def find_ipx(val):
@@ -1095,7 +1108,7 @@ class ModelEngine():
         precision = n_true_pos / (n_true_pos+n_false_pos)
         recall = n_true_pos / (n_true_pos+n_false_neg)
         false_alarm = n_false_pos / (n_true_neg+n_false_pos)
-        F1=2 * ((precision*recall)/(precision+recall));
+        F1 = 2 * ((precision*recall)/(precision+recall));
 
         return accuracy,precision,recall,false_alarm,F1
 
@@ -1127,11 +1140,11 @@ class CoraEngine():
         return hourly_height
     
     @staticmethod
-    def calc_predictions(hourly_height,lat):
+    def calc_predictions(hourly_height,lat,time_recon):
         coef = utide.solve(hourly_height['time'],hourly_height['val'],lat=lat)
-        predictions = utide.reconstruct(hourly_height['time'],coef)
-        predictions = pd.DataFrame({'time':hourly_height['time'],
-                              'val':predictions['h']})
+        predictions = utide.reconstruct(time_recon,coef)
+        predictions = pd.DataFrame({'time':time_recon,
+                                    'val':predictions['h']})
         return predictions
     
     @staticmethod
