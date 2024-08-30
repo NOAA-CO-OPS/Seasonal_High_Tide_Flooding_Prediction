@@ -157,19 +157,19 @@ for stn_i = stationIndex
     dailyProb_all = struct('dailyProb', dailyProb_all_data);
 
     % Brier skill score for all
-    [bs, bss, bsSE, bssSE] = BrierScore(ynObs_all_data, dailyProb_all_data);
+    [bs_all, bss_all, bsSE_all, bssSE_all] = BrierScore(ynObs_all_data, dailyProb_all_data);
     %disp(bs)
 
     % Sum total floods
     floods_all_fields = cellfun(@(s) s.totalYes, allskillOut, "UniformOutput", false);
     floods_all_data = vertcat(floods_all_fields{:});
-    total_Floods = sum(floods_all_data);
+    total_Floods_all = sum(floods_all_data);
     %disp(total_Floods)
 
     %Confusion matrix and stats for the 5% warning threshold
-    confusion05 = confusionStats(ynObs_all_data, dailyProb_all_data,0.05);
-    recall = confusion05.recall;
-    falseAlarm = confusion05.falseAlarm;
+    confusion05_all = confusionStats(ynObs_all_data, dailyProb_all_data,0.05);
+    recall_all = confusion05.recall;
+    falseAlarm_all = confusion05.falseAlarm;
 
     % Average the results to get the final score
     %totalFloodsValues = cellfun(@(s) s.totalYes, allskillOut); 
@@ -199,10 +199,10 @@ for stn_i = stationIndex
     %end    
     %disp(skillful);
     
-    if bss >= bssSE
-        skillful = 'yes';
+    if bss_all >= bssSE_all
+        skillful_all = 'yes';
     else
-        skillful = 'no';
+        skillful_all = 'no';
     end    
     %disp(skillful);
 
@@ -211,8 +211,8 @@ for stn_i = stationIndex
     %                   mean_bssSE, mean_recall, mean_falseAlarm};
     %disp(output_data)
     
-    output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,bss,...
-                       bssSE, recall, falseAlarm};
+    output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods_all,skillful_all,bss_all,...
+                       bssSE_all, recall_all, falseAlarm_all};
     disp(output_data)
 
     output_cell_array = [output_cell_array; output_data];
