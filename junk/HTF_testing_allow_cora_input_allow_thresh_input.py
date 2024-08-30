@@ -45,6 +45,21 @@ class HTF_model:
         is [start_year,end_year]. Make sure the start year starts on Jan 1 and the
         end year ends on Dec 31, e.g. [19830101,20011231].
         
+    thresh_type: str, optional
+        The type of high tide flood threshold two use. Options are:
+            'NWS': The published minor threshold from NWS at the tide gauge, if a gauge
+                   id was input for loc. Not available if a lat/lon was input.
+            'MHHW': Use a threshold value relative to MHHW. Can also be any other
+                    standard tidal datum, for example MSL, MHW, MLW, MLLW to use
+                    a threshold value relative to that elevation.
+        The default is 'NWS'
+    
+    thresh_rel: float or int, optional
+        The height (in m) to add to the high tide flood threhsold given by
+        thresh_type. For example, if thresh_type='MHHW' and thresh_rel=0.15,
+        the threshold is taken as 0.15 m above MHHW.
+        The default is 0.
+                
     assess_method : str, optional
         The model assessment method. Options are:
             'DusekEtAl': The original method used in Duset et al. (2022).
@@ -112,8 +127,9 @@ class HTF_model:
 
     '''
     def __init__(self,loc,years_fit,years_assess,years_pred,
+                 thresh_type='NWS',thresh_rel=0,
                  assess_method='DusekEtAl',assess_metric='htf_days',
-                 holdout_num=1,prctile_bin_val='pred_adj'):      
+                 holdout_num=1,prctile_bin_val='pred_adj',):      
         '''
         Initializes the HTF model and does initial error checking of inputs.
 
@@ -122,17 +138,32 @@ class HTF_model:
         self.years_fit = years_fit
         self.years_assess = years_assess
         self.years_pred = years_pred   
+        self.thresh_type = thresh_type
+        self.thresh_rel = thresh_rel
         self.assess_method = assess_method
         self.assess_metric = assess_metric
         self.holdout_num = holdout_num
         self.prctile_bin_val = prctile_bin_val
+
+        # Check that either a NWLON or lat/lon were provided correctly #
+        if not isinstance(self.loc,int) and not isinstance(self.loc,list):
+            raise ValueError('First argument loc must be either an integer, representing an NWLON station, or a list with lat/lon values in the form [lat,lon].')
+        if isinstance(self.loc,list) and len(self.loc)!=2:
+            raise ValueError('You have provided a list for first argument loc, but the list does not have len()=2. The list needs to be a lat and a lon value in the form [lat,lon].')
         
+        # Check that the desired threshold types are valid for the type of location #
+        if self.thresh_type not in ['NWS','MHHW','MHW','MSL','MLW','MLLW']:
+                raise ValueError("The threshold type must be either 'NWS' or a standard tidal datum (e.g. 'MHHW' or 'MSL')")
+        if isinstance(self.loc,list) and self.thresh_type=='NWS':
+                raise ValueError("NWS thresholds are not available for non-tide gauge locations. You can use a standard tidal datum (e.g. 'MHHW') along with thresh_rel to specify a threshold.")
+        
+        # Check that valid options were provided for the remaining inputs. #
         if self.assess_method not in ['DusekEtAl','xvalid_batch','xvalid_holdout','None']:
                 raise ValueError("The assessment method must be one of: 'DusekEtAl', 'xvalid_batch', 'xvalid_holdout', 'None'")
         if self.assess_metric not in ['htf_days']:
                 raise ValueError("The assessment metric must be one of: 'htf_days'")            
         if self.prctile_bin_val not in ['pred','pred_adj']:
-                raise ValueError("Thepercentile bin value must be one of: 'pred','pred_adj'")
+                raise ValueError("The percentile bin value must be one of: 'pred','pred_adj'")
         if self.assess_method == 'xvalid_batch' or self.assess_method == 'xvalid_holdout':
             if utils.datestr2dt(str(self.years_assess[0]))-utils.datestr2dt(str(self.years_fit[-1]))>datetime.timedelta(days=1):
                 raise ValueError('The first assessment year should be the year immedietly following the last training year')
@@ -146,7 +177,7 @@ class HTF_model:
         After running, model object contains an attribute named out_train
 
         '''
-        data = self.pull_data(self.loc,self.years_fit,'gmt')
+        data = self.pull_data(self.loc,self.years_fit,'gmt',self.thresh_type,self.thresh_rel)
         self.out_train = self.calc_resids_and_dists(data,bin_val=self.prctile_bin_val)
         
         
@@ -224,7 +255,7 @@ class HTF_model:
 
            
     @staticmethod    
-    def pull_data(loc,years,time_zone):
+    def pull_data(loc,years,time_zone,thresh_type,thresh_rel):
         '''
         Function to get and format the observed and predicted hourly water levels for
         the desired time period.
@@ -251,17 +282,34 @@ class HTF_model:
         '''
         if isinstance(loc,int):
             print('Downloading and formatting observations. This can take a while...')
-            data_api = get_API_data(loc, str(years[0]), str(years[1]),
-                                product=['hourly_height','predictions'],
-                                time_zone=time_zone).run()
-            data_nonapi = get_nonAPI_data(loc)
+            try:
+                data_api = get_API_data(loc, str(years[0]), str(years[1]),
+                                    product=['hourly_height','predictions'],
+                                    time_zone=time_zone).run()
+                data_nonapi = get_nonAPI_data(loc)
+            except KeyError:
+                raise ValueError('The provided gauge ID is not a valid NWLON station number')
+            except TypeError:
+                raise ValueError('The provided dates are not in the correct format. Please provide a list in the form [yyyymmdd,yyyymmdd]')
+            except:
+                raise ValueError('At least one of the requested product names is not valid.')
+            
+            if thresh_type == 'NWS':
+                flood_thresh = data_nonapi['Derived Minor'].iloc[0]
+            else:
+                datums = get_API_data(loc,str(years[0]),str(years[1]),
+                                    product='datums').run()['datums']['datums']
+                thresh1 = np.array(datums)[np.array([datums[i]['name'] for i in range(len(datums))]) == thresh_type][0]['value']
+                flood_thresh = thresh1+thresh_rel
+            
             data = {'ID':data_nonapi['St ID'].iloc[0],
                     'Name':data_nonapi['Station Name'].iloc[0],
                     'Epoch center':data_nonapi['Epoch center'].iloc[0],
                     'SLT':data_nonapi['MSL Trend (mm/yr)'].iloc[0],
-                    'Flood thresh':data_nonapi['Derived Minor'].iloc[0],
+                    'Flood thresh':flood_thresh,
                     'hourly_height':data_api['hourly_height'],
-                    'predictions':data_api['predictions']}           
+                    'predictions':data_api['predictions']} 
+            
         elif isinstance(loc,list):
             print('Downloading and formatting CORA output. This takes a long time...')
             hourly_height = CoraEngine.get_hourly_output(loc, 
@@ -1150,9 +1198,18 @@ class CoraEngine():
         epoch_center = utils.dt2decimalyr(mid)
         return epoch_center
     
-    @staticmethod
-    def calc_flood_thresh():
-        return 0.5
+    def calc_tidal_datums(self,hourly_height):
+        datums={'MHHW':2,'MSL':0,'MLLW':-2}
+        return datums
+        # Need TADC and/or VDatum #
+      
+    def calc_flood_thresh(self,hourly_height,thresh_type,thresh_rel):
+        datums = self.calc_tidal_datums()
+        thresh1 = datums[thresh_type]
+        thresh = thresh1+thresh_rel
+        return thresh
+    
+
 
         
 class utils:
