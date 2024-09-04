@@ -1165,7 +1165,7 @@ class CoraEngine():
     
     @staticmethod
     def calc_flood_thresh():
-        return 0.5
+        return np.nan
 
         
 class utils:
