@@ -19,13 +19,14 @@ This is open access and available at: https://www.frontiersin.org/articles/10.33
 
 ## Installation
 
-You can install the package using pip:
+To install the package, first create and switch into a new anaconda environment:
 
 ```bash
-pip install git+https://github.com/NOAA-CO-OPS/Seasonal_High_Tide_Flooding_Prediction.git@pyHTF
+conda create -n pyHTF python
+conda activate pyHTF
 ```
 
-Or you can install it from source:
+Then, you can install the package using git and pip:
 
 ```bash
 git clone https://github.com/NOAA-CO-OPS/Seasonal_High_Tide_Flooding_Prediction.git
@@ -42,14 +43,14 @@ Below is a representative example of using the package. This example trains the 
 ```python
 from HTF import HTF_model
 
-model = HTF_model(station=8665530,
+model = HTF_model(loc=8665530,
 		years_fit=[19830101,20011231],
 		years_assess=[19830101,20011231],
-                years_pred=[20020101,20021231],
-                assess_method='DusekEtAl',
-                assess_metric='htf_days',
-                holdout_num=None,
-                prctile_bin_val='pred_adj')
+        years_pred=[20020101,20021231],
+        assess_method='DusekEtAl',
+        assess_metric='htf_days',
+        holdout_num=None,
+        prctile_bin_val='pred_adj')
 model.train()
 model.assess()
 model.predict()

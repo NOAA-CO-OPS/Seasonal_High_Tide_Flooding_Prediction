@@ -9,13 +9,14 @@ from setuptools import setup, find_packages
 
 setup(
     name='HTF',
-    version='1.0',
+    version='1.2.0',
     packages=find_packages(),
     package_data={
         'HTF': ['data/HighTideOutlookStationList_05_17_23_PAC_SLT.csv'],
     },
     include_package_data=True,
-    install_requires=['datetime','numpy','pandas',
-                      'pkg_resources','pytest','requests','scipy',
-                      'sklearn','warnings'],
+    install_requires=['datetime','intake','numpy',
+                      'openpyxl','pandas','pytest',
+                      'requests','scipy','scikit-learn',
+                      'utide'],
 )
