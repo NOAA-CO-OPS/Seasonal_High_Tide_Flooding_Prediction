@@ -1,5 +1,5 @@
 function HTF_cross_validation(stationList, training_startStr, training_endStr, ...
-    stationIndex)
+    numFolds, stationIndex)
 
 %Function to conduct cross validation of monthly high tide flooding outlook
 %model.
@@ -31,13 +31,43 @@ if isempty(stationIndex)
     stationIndex=1:n;
 end    
 
-% Get list of years from training start and end dates
+% Convert date formats from input
 training_startdt = datetime(training_startStr, 'InputFormat', 'yyyyMMdd');
+training_start_date_time = datetime(year(training_startdt), month(training_startdt),...
+    day(training_startdt), 0, 0, 0);
 training_startYear = year(training_startdt);
-training_endYear = year(datetime(training_endStr, 'InputFormat', 'yyyyMMdd'));
+training_enddt = datetime(training_endStr, 'InputFormat', 'yyyyMMdd');
+training_end_date_time = datetime(year(training_enddt), month(training_enddt),...
+    day(training_enddt), 23, 0, 0);
+training_endYear = year(training_enddt);
 
 % Create list of training years
 training_years = training_startYear:training_endYear;
+
+% Create datetime array with hourly intervals
+training_timeSeries = training_start_date_time:hours(1):training_end_date_time;
+
+% Calculate the number of days and hours in each fold
+numDays = length(training_timeSeries);
+numFolds = numFolds;
+foldSize = floor(numDays / numFolds);
+%disp(foldSize)
+
+% Separate the time series into folds
+folds = cell(1, numFolds);
+
+for i = 1:numFolds
+    startIdx = (i-1) * foldSize + 1;
+
+    if i < numFolds
+        endIdx = i * foldSize;
+    else
+        endIdx = numDays;
+    end
+
+    folds{i} = training_timeSeries(startIdx:endIdx);
+    %disp(folds{i})
+end
 
 % Testing date range
 %testing_startDate = datetime(testing_startStr, 'InputFormat', 'yyyyMMdd');
@@ -69,7 +99,7 @@ for stn_i = stationIndex
     % Pull data from 1 year before training start date specified to end
     % date specified
     pre_training_year = datestr(training_startdt - calyears(1), 'yyyymmdd');
-    disp(pre_training_year)
+    %training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
     training_data = HTF_data_pull(stationNumStr, pre_training_year, training_endStr);
     [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat']);
 
@@ -84,34 +114,49 @@ for stn_i = stationIndex
     %Create an array to store skill assessment output
     allskillOut = cell(1, length(training_years));
 
-    %Iterate through training years and create training datasets that remove 
-    %1 year at a time
-    for i = 1:length(training_years)
+    %Iterate through folds and create training datasets that remove 
+    %1 fold at a time
+    % KAREN - 9/4/2024 - Test starting at 2nd fold so that you always have
+    % preceding monthly anomaly without retrieving more data than training
+    % set
+    for i = 2:numFolds
+        testFold = folds{i};
+        %disp(testFold)
+        trainFolds = folds;
+        trainFolds(i) = [];
+        training_data_folds = [trainFolds{:}];
+        
         % Remove entries with the specified year
-        yearToHoldout = training_years(i);
-        disp(yearToHoldout)
+        %yearToHoldout = training_years(i);
+        %disp(yearToHoldout)
 
         % Extract year from datetime
-        years = year(training_data_table.dateTime); %from data table
-        rowsToKeep = years ~= yearToHoldout;
-
+        %years = year(training_data_table.dateTime); %from data table
+        %rowsToKeep = years ~= yearToHoldout;
+        %training_days = unique(dateshift(training_data_table.dateTime, 'start', 'day'));
+        rowsToKeep = ismember(training_data_table.dateTime, training_data_folds);
+        
         % Remove rows from data based on logical index
         training_data_table_i = training_data_table(rowsToKeep,:);
+        %disp(training_data_table_i(1,:))
+
+        rowsToHoldout = ismember(training_data_table.dateTime, testFold);
+        %disp(rowsToHoldout)
 
         % Create test data from original training dataset
-        rowsToHoldout = years == yearToHoldout;
+        %rowsToHoldout = years == yearToHoldout;
         test_data_table_i = training_data_table(rowsToHoldout,:);
-        %disp(test_data_table_i)
+        %disp(test_data_table_i(1,:))
     
         % Convert the training and test tables to a structured array and save as "data"
         data = table2struct(training_data_table_i,"ToScalar",true);
         test_data = table2struct(test_data_table_i,"ToScalar",true);
 
         % Save the updated structured arrays
-        filename = sprintf('%s_data_training_omit_%s',stationNumStr,num2str(yearToHoldout));
+        filename = sprintf('%s_data_training_omit_%s',stationNumStr,num2str(i));
         save(filename,'data');
 
-        test_file = sprintf('%s_data_testing_%s',stationNumStr,num2str(yearToHoldout));
+        test_file = sprintf('%s_data_testing_%s',stationNumStr,num2str(i));
         save(test_file,'test_data');
     
         % RESIDUAL CALC
@@ -125,32 +170,24 @@ for stn_i = stationIndex
 
         % copy mat file
         resOut_copy = load(sprintf('%s_res',stationNumStr));
-        newres = sprintf('%s_res_training_omit_%s',stationNumStr,num2str(yearToHoldout));
+        newres = sprintf('%s_res_training_omit_%s',stationNumStr,num2str(i));
         save(newres,'-struct','resOut_copy');
 
         % RUN MODEL FOR TEST YEARS
         % PREDICTION
-        % Run HTF_predict
-        testing_startyear = yearToHoldout;
-        testing_startMonth_input = 1;
-        testing_startDay_input = 1;
-        testing_startDate = datetime(testing_startyear, testing_startMonth_input, testing_startDay_input);
+        % Run HTF_predict        
+        testing_startDate = testFold(1);
         testing_startMonth = datestr(testing_startDate, 'yyyymm');
+        %disp(testing_startMonth)
 
-        testing_endyear = yearToHoldout;
-        testing_endMonth_input = 12;
-        testing_endDay_input = 31;
-        testing_endDate = datetime(testing_endyear, testing_endMonth_input, testing_endDay_input);
+        testing_endDate = testFold(end);
         testing_endMonth = datestr(testing_endDate, 'yyyymm');
 
         predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
                       testing_startMonth,testing_endMonth,resOut,test_data); 
 
-        %predOut_all(i) = predOut % Karen - 8/28/2024
-        %disp(predOut_all)
-
         % copy mat file
-        newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(yearToHoldout));
+        newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(i));
         save(newpred,'-struct','predOut');
 
         % SKILL ASSESSMENT
@@ -166,11 +203,89 @@ for stn_i = stationIndex
         newskill = sprintf('%s_skill_test_omit_%s',stationNumStr,num2str(yearToHoldout));
         save(newskill,'-struct','skillOut');
         
-    % KAREN - 8/20 - Concatenate observations and predictions for
-    % all model runs ???
-        
-
     end
+    % for i = 1:length(training_years)
+    %     % Remove entries with the specified year
+    %     yearToHoldout = training_years(i);
+    %     disp(yearToHoldout)
+    % 
+    %     % Extract year from datetime
+    %     years = year(training_data_table.dateTime); %from data table
+    %     rowsToKeep = years ~= yearToHoldout;
+    % 
+    %     % Remove rows from data based on logical index
+    %     training_data_table_i = training_data_table(rowsToKeep,:);
+    % 
+    %     % Create test data from original training dataset
+    %     rowsToHoldout = years == yearToHoldout;
+    %     test_data_table_i = training_data_table(rowsToHoldout,:);
+    %     %disp(test_data_table_i)
+    % 
+    %     % Convert the training and test tables to a structured array and save as "data"
+    %     data = table2struct(training_data_table_i,"ToScalar",true);
+    %     test_data = table2struct(test_data_table_i,"ToScalar",true);
+    % 
+    %     % Save the updated structured arrays
+    %     filename = sprintf('%s_data_training_omit_%s',stationNumStr,num2str(yearToHoldout));
+    %     save(filename,'data');
+    % 
+    %     test_file = sprintf('%s_data_testing_%s',stationNumStr,num2str(yearToHoldout));
+    %     save(test_file,'test_data');
+    % 
+    %     % RESIDUAL CALC
+    %     % copy mat file to fit HTF_residual_calc
+    %     data = load(filename);
+    %     newdata = sprintf('%s_data.mat',stationNumStr);
+    %     save(newdata, '-struct', 'data')
+    % 
+    %     % Run HTF_residual_calc
+    %     resOut = HTF_residual_calc(stationNumStr, slt(stn_i), epochCenter(stn_i)); 
+    % 
+    %     % copy mat file
+    %     resOut_copy = load(sprintf('%s_res',stationNumStr));
+    %     newres = sprintf('%s_res_training_omit_%s',stationNumStr,num2str(yearToHoldout));
+    %     save(newres,'-struct','resOut_copy');
+    % 
+    %     % RUN MODEL FOR TEST YEARS
+    %     % PREDICTION
+    %     % Run HTF_predict
+    %     testing_startyear = yearToHoldout;
+    %     testing_startMonth_input = 1;
+    %     testing_startDay_input = 1;
+    %     testing_startDate = datetime(testing_startyear, testing_startMonth_input, testing_startDay_input);
+    %     testing_startMonth = datestr(testing_startDate, 'yyyymm');
+    % 
+    %     testing_endyear = yearToHoldout;
+    %     testing_endMonth_input = 12;
+    %     testing_endDay_input = 31;
+    %     testing_endDate = datetime(testing_endyear, testing_endMonth_input, testing_endDay_input);
+    %     testing_endMonth = datestr(testing_endDate, 'yyyymm');
+    % 
+    %     predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
+    %                   testing_startMonth,testing_endMonth,resOut,test_data); 
+    % 
+    %     %predOut_all(i) = predOut % Karen - 8/28/2024
+    %     %disp(predOut_all)
+    % 
+    %     % copy mat file
+    %     newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(yearToHoldout));
+    %     save(newpred,'-struct','predOut');
+    % 
+    %     % SKILL ASSESSMENT
+    %     % Run HTF_cross_valid_skill
+    %     skillOut = HTF_cross_valid_skill(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
+    %                                  testing_startDate, testing_endDate,...
+    %                                  test_data,resOut,predOut);
+    % 
+    %     allskillOut{i} = skillOut;
+    %     %allskillOut{stn_i} = skillOut;
+    % 
+    %     % copy mat file
+    %     newskill = sprintf('%s_skill_test_omit_%s',stationNumStr,num2str(yearToHoldout));
+    %     save(newskill,'-struct','skillOut');
+    % 
+    % 
+    % end
 
     % Calculate the results for all training iterations 
     % All observations of threshold being exceeded
