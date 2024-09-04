@@ -1,5 +1,5 @@
 function HTF_cross_validation(stationList, training_startStr, training_endStr, ...
-    testing_startStr, testing_endStr,stationIndex)
+    stationIndex)
 
 %Function to conduct cross validation of monthly high tide flooding outlook
 %model.
@@ -32,17 +32,18 @@ if isempty(stationIndex)
 end    
 
 % Get list of years from training start and end dates
-training_startYear = year(datetime(training_startStr, 'InputFormat', 'yyyyMMdd'));
+training_startdt = datetime(training_startStr, 'InputFormat', 'yyyyMMdd');
+training_startYear = year(training_startdt);
 training_endYear = year(datetime(training_endStr, 'InputFormat', 'yyyyMMdd'));
 
 % Create list of training years
 training_years = training_startYear:training_endYear;
 
 % Testing date range
-testing_startDate = datetime(testing_startStr, 'InputFormat', 'yyyyMMdd');
-testing_endDate = datetime(testing_endStr, 'InputFormat', 'yyyyMMdd');
-testing_startMonth = datestr(testing_startDate, 'yyyymm');
-testing_endMonth = datestr(testing_endDate, 'yyyymm');
+%testing_startDate = datetime(testing_startStr, 'InputFormat', 'yyyyMMdd');
+%testing_endDate = datetime(testing_endStr, 'InputFormat', 'yyyyMMdd');
+%testing_startMonth = datestr(testing_startDate, 'yyyymm');
+%testing_endMonth = datestr(testing_endDate, 'yyyymm');
 
 
 % Initialize empty array for output
@@ -64,12 +65,17 @@ for stn_i = stationIndex
     disp(stationNumStr)
     
     % Data for training
-    training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
+    %training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
+    % Pull data from 1 year before training start date specified to end
+    % date specified
+    pre_training_year = datestr(training_startdt - calyears(1), 'yyyymmdd');
+    disp(pre_training_year)
+    training_data = HTF_data_pull(stationNumStr, pre_training_year, training_endStr);
     [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat']);
 
     % Data for testing
-    test_data = HTF_data_pull(stationNumStr, testing_startStr, testing_endStr);
-    [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_testing.mat']);
+    %test_data = HTF_data_pull(stationNumStr, testing_startStr, testing_endStr);
+    %[~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_testing.mat']);
 
 
     %Convert structured array to table
@@ -82,23 +88,31 @@ for stn_i = stationIndex
     %1 year at a time
     for i = 1:length(training_years)
         % Remove entries with the specified year
-        yearToRemove = training_years(i);
-        disp(yearToRemove)
+        yearToHoldout = training_years(i);
+        disp(yearToHoldout)
 
         % Extract year from datetime
         years = year(training_data_table.dateTime); %from data table
-        rowsToKeep = years ~= yearToRemove;
+        rowsToKeep = years ~= yearToHoldout;
 
         % Remove rows from data based on logical index
         training_data_table_i = training_data_table(rowsToKeep,:);
-        %display(training_data);
-    
-        % Convert the table to a structured array and save as "data"
-        data = table2struct(training_data_table_i,"ToScalar",true);
 
-        % Save the updated structured array
-        filename = sprintf('%s_data_training_omit_%s',stationNumStr,num2str(yearToRemove));
+        % Create test data from original training dataset
+        rowsToHoldout = years == yearToHoldout;
+        test_data_table_i = training_data_table(rowsToHoldout,:);
+        %disp(test_data_table_i)
+    
+        % Convert the training and test tables to a structured array and save as "data"
+        data = table2struct(training_data_table_i,"ToScalar",true);
+        test_data = table2struct(test_data_table_i,"ToScalar",true);
+
+        % Save the updated structured arrays
+        filename = sprintf('%s_data_training_omit_%s',stationNumStr,num2str(yearToHoldout));
         save(filename,'data');
+
+        test_file = sprintf('%s_data_testing_%s',stationNumStr,num2str(yearToHoldout));
+        save(test_file,'test_data');
     
         % RESIDUAL CALC
         % copy mat file to fit HTF_residual_calc
@@ -111,12 +125,24 @@ for stn_i = stationIndex
 
         % copy mat file
         resOut_copy = load(sprintf('%s_res',stationNumStr));
-        newres = sprintf('%s_res_training_omit_%s',stationNumStr,num2str(yearToRemove));
+        newres = sprintf('%s_res_training_omit_%s',stationNumStr,num2str(yearToHoldout));
         save(newres,'-struct','resOut_copy');
 
         % RUN MODEL FOR TEST YEARS
         % PREDICTION
         % Run HTF_predict
+        testing_startyear = yearToHoldout;
+        testing_startMonth_input = 1;
+        testing_startDay_input = 1;
+        testing_startDate = datetime(testing_startyear, testing_startMonth_input, testing_startDay_input);
+        testing_startMonth = datestr(testing_startDate, 'yyyymm');
+
+        testing_endyear = yearToHoldout;
+        testing_endMonth_input = 12;
+        testing_endDay_input = 31;
+        testing_endDate = datetime(testing_endyear, testing_endMonth_input, testing_endDay_input);
+        testing_endMonth = datestr(testing_endDate, 'yyyymm');
+
         predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
                       testing_startMonth,testing_endMonth,resOut,test_data); 
 
@@ -124,7 +150,7 @@ for stn_i = stationIndex
         %disp(predOut_all)
 
         % copy mat file
-        newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(yearToRemove));
+        newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(yearToHoldout));
         save(newpred,'-struct','predOut');
 
         % SKILL ASSESSMENT
@@ -137,7 +163,7 @@ for stn_i = stationIndex
         %allskillOut{stn_i} = skillOut;
 
         % copy mat file
-        newskill = sprintf('%s_skill_test_omit_%s',stationNumStr,num2str(yearToRemove));
+        newskill = sprintf('%s_skill_test_omit_%s',stationNumStr,num2str(yearToHoldout));
         save(newskill,'-struct','skillOut');
         
     % KAREN - 8/20 - Concatenate observations and predictions for
@@ -168,8 +194,8 @@ for stn_i = stationIndex
 
     %Confusion matrix and stats for the 5% warning threshold
     confusion05_all = confusionStats(ynObs_all_data, dailyProb_all_data,0.05);
-    recall_all = confusion05.recall;
-    falseAlarm_all = confusion05.falseAlarm;
+    recall_all = confusion05_all.recall;
+    falseAlarm_all = confusion05_all.falseAlarm;
 
     % Average the results to get the final score
     %totalFloodsValues = cellfun(@(s) s.totalYes, allskillOut); 
@@ -221,7 +247,7 @@ for stn_i = stationIndex
 %Output table w/ skill scores
 
 %Create the filename for saving the HTF summary table csv
-tabfileName = strcat('HTF_crossvalid_skillsummary',testing_startStr,'_',testing_endStr,'.csv');
+tabfileName = strcat('HTF_crossvalid_skillsummary',training_startStr,'_',training_endStr,'.csv');
 
 %Write the file
 writecell(output_cell_array,tabfileName);
