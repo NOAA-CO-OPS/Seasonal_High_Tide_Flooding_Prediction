@@ -46,11 +46,11 @@ from HTF import HTF_model
 model = HTF_model(loc=8665530,
 		years_fit=[19830101,20011231],
 		years_assess=[19830101,20011231],
-        years_pred=[20020101,20021231],
-        assess_method='DusekEtAl',
-        assess_metric='htf_days',
-        holdout_num=None,
-        prctile_bin_val='pred_adj')
+			years_pred=[20020101,20021231],
+			assess_method='DusekEtAl',
+			assess_metric='htf_days',
+			holdout_num=None,
+			prctile_bin_val='pred_adj')
 model.train()
 model.assess()
 model.predict()
