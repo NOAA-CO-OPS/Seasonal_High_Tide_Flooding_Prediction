@@ -1,5 +1,5 @@
 function HTF_cross_validation(stationList, training_startStr, training_endStr, ...
-    numFolds, stationIndex)
+    numFolds, holdOut, stationIndex)
 
 %Function to conduct cross validation of monthly high tide flooding outlook
 %model.
@@ -98,6 +98,10 @@ disp('Running the data download on stations:')
 for stn_i = stationIndex
     stationNumStr = num2str(stationNum(stn_i));
     disp(stationNumStr)
+
+    %Create an array to store skill assessment output
+    allskillOut = cell(1, length(numFolds));
+
     
     % Data for training
     %training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
@@ -111,166 +115,205 @@ for stn_i = stationIndex
     %Convert structured array to table
     training_data_table = struct2table(training_data);
 
-    %Create an array to store skill assessment output
-    allskillOut = cell(1, length(numFolds));
-
-    %Iterate through folds and create training datasets that remove 
-    %1 fold at a time
-    % Test starting at 2nd fold so that you always have
-    % preceding monthly anomaly without retrieving more data than training
-    % set and the predictions are always based on preceding data
-    for i = 2:numFolds
-        testFold = folds{i};
-        %disp(testFold)
-        trainFolds = folds;
-        trainFolds(i) = [];
-        training_data_folds = [trainFolds{:}];
-        
-        % Extract year from datetime
-        rowsToKeep = ismember(training_data_table.dateTime, training_data_folds);
-        
-        % Remove rows from data based on logical index
-        training_data_table_i = training_data_table(rowsToKeep,:);
-        %disp(training_data_table_i(1,:))
-
-        rowsToHoldout = ismember(training_data_table.dateTime, testFold);
-        %disp(rowsToHoldout)
-
-        % Create test data from original training dataset
-        %rowsToHoldout = years == yearToHoldout;
-        test_data_table_i = training_data_table(rowsToHoldout,:);
-        %disp(test_data_table_i(1,:))
+    if holdOut == "yes"
+        %Iterate through folds and create training datasets that remove 
+        %1 fold at a time
+        % Test starting at 2nd fold so that you always have
+        % preceding monthly anomaly without retrieving more data than training
+        % set and the predictions are always based on preceding data
+        for i = 2:numFolds
+            testFold = folds{i};
+            %disp(testFold)
+            trainFolds = folds;
+            trainFolds(i) = [];
+            training_data_folds = [trainFolds{:}];
+            
+            % Extract year from datetime
+            rowsToKeep = ismember(training_data_table.dateTime, training_data_folds);
+            
+            % Remove rows from data based on logical index
+            training_data_table_i = training_data_table(rowsToKeep,:);
+            %disp(training_data_table_i(1,:))
     
-        % Convert the training and test tables to a structured array and save as "data"
-        data = table2struct(training_data_table_i,"ToScalar",true);
-        test_data = table2struct(test_data_table_i,"ToScalar",true);
+            rowsToHoldout = ismember(training_data_table.dateTime, testFold);
+            %disp(rowsToHoldout)
+    
+            % Create test data from original training dataset
+            %rowsToHoldout = years == yearToHoldout;
+            test_data_table_i = training_data_table(rowsToHoldout,:);
+            %disp(test_data_table_i(1,:))
+        
+            % Convert the training and test tables to a structured array and save as "data"
+            data = table2struct(training_data_table_i,"ToScalar",true);
+            test_data = table2struct(test_data_table_i,"ToScalar",true);
+    
+            % Save the updated structured arrays
+            filename = sprintf('%s_data_training_omit_%s',stationNumStr,num2str(i));
+            save(filename,'data');
+    
+            test_file = sprintf('%s_data_testing_%s',stationNumStr,num2str(i));
+            save(test_file,'test_data');
+        
+            % RESIDUAL CALC
+            % copy mat file to fit HTF_residual_calc
+            data = load(filename);
+            newdata = sprintf('%s_data.mat',stationNumStr);
+            save(newdata, '-struct', 'data')
+    
+            % Run HTF_residual_calc
+            resOut = HTF_residual_calc(stationNumStr, slt(stn_i), epochCenter(stn_i)); 
+    
+            % copy mat file
+            resOut_copy = load(sprintf('%s_res',stationNumStr));
+            newres = sprintf('%s_res_training_omit_%s',stationNumStr,num2str(i));
+            save(newres,'-struct','resOut_copy');
+    
+            % RUN MODEL FOR TEST YEARS
+            % PREDICTION
+            % Run HTF_predict        
+            testing_startDate = testFold(1);
+            testing_startMonth = datestr(testing_startDate, 'yyyymm');
+            %disp(testing_startMonth)
+    
+            testing_endDate = testFold(end);
+            testing_endMonth = datestr(testing_endDate, 'yyyymm');
+    
+            predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
+                          testing_startMonth,testing_endMonth,resOut,test_data); 
+    
+            % copy mat file
+            newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(i));
+            save(newpred,'-struct','predOut');
+    
+            % SKILL ASSESSMENT
+            % Run HTF_cross_valid_skill
+            skillOut = HTF_cross_valid_skill(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
+                                         testing_startDate, testing_endDate,...
+                                         test_data,resOut,predOut);
+        
+            allskillOut{i} = skillOut;
+            %disp(allskillOut{i})
+    
+            % copy mat file
+            newskill = sprintf('%s_skill_test_omit_%s',stationNumStr,num2str(i));
+            save(newskill,'-struct','skillOut');
+        end
 
-        % Save the updated structured arrays
-        filename = sprintf('%s_data_training_omit_%s',stationNumStr,num2str(i));
+        % Calculate the results for all training iterations 
+        % All observations of threshold being exceeded
+        validEntries_ynObs = cellfun(@(s) isstruct(s) && isfield(s, 'ynObs'), allskillOut);
+        ynObs_all_fields = cellfun(@(s) s.ynObs, allskillOut(validEntries_ynObs), 'UniformOutput', false);
+    
+        ynObs_all_data = vertcat(ynObs_all_fields{:});
+    
+        % All daily prob
+        validEntries_dailyProb = cellfun(@(s) isstruct(s) && isfield(s, 'dailyProb'), allskillOut);
+        dailyProb_all_fields = cellfun(@(s) s.dailyProb, allskillOut(validEntries_dailyProb), "UniformOutput", false);
+        dailyProb_all_data = vertcat(dailyProb_all_fields{:});
+        dailyProb_all = struct('dailyProb', dailyProb_all_data);
+    
+        % Brier skill score for all
+        [bs_all, bss_all, bsSE_all, bssSE_all] = BrierScore(ynObs_all_data, dailyProb_all_data);
+        %disp(bs)
+    
+        % Sum total floods
+        validEntries_floods = cellfun(@(s) isstruct(s) && isfield(s, 'totalYes'), allskillOut);
+        floods_all_fields = cellfun(@(s) s.totalYes, allskillOut(validEntries_floods), "UniformOutput", false);
+        floods_all_data = vertcat(floods_all_fields{:});
+        total_Floods_all = sum(floods_all_data);
+        %disp(total_Floods)
+    
+        %Confusion matrix and stats for the 5% warning threshold
+        confusion05_all = confusionStats(ynObs_all_data, dailyProb_all_data,0.05);
+        recall_all = confusion05_all.recall;
+        falseAlarm_all = confusion05_all.falseAlarm; 
+
+        if bss_all >= bssSE_all
+            skillful_all = 'yes';
+        else
+            skillful_all = 'no';
+        end    
+    
+        output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods_all,skillful_all,bss_all,...
+                       bssSE_all, recall_all, falseAlarm_all};
+        disp(output_data)
+    
+    elseif holdOut == "no"        
+        % Pull data for dates specified
+        training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
+        [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat']);
+    
+        %Convert structured array to table
+        training_data_table = struct2table(training_data);        
+
+        % Convert the training table to a structured array and save as "data"
+        data = table2struct(training_data_table,"ToScalar",true);
+        
+        % RESIDUAL CALC
+        % Run HTF_residual_calc
+        
+        % copy mat file to fit HTF_residual_calc
+        filename = sprintf('%s_data_training',stationNumStr);
         save(filename,'data');
 
-        test_file = sprintf('%s_data_testing_%s',stationNumStr,num2str(i));
-        save(test_file,'test_data');
-    
-        % RESIDUAL CALC
-        % copy mat file to fit HTF_residual_calc
         data = load(filename);
         newdata = sprintf('%s_data.mat',stationNumStr);
         save(newdata, '-struct', 'data')
+        
+        resOut = HTF_residual_calc(stationNumStr, slt(stn_i), epochCenter(stn_i));    
 
-        % Run HTF_residual_calc
-        resOut = HTF_residual_calc(stationNumStr, slt(stn_i), epochCenter(stn_i)); 
-
-        % copy mat file
-        resOut_copy = load(sprintf('%s_res',stationNumStr));
-        newres = sprintf('%s_res_training_omit_%s',stationNumStr,num2str(i));
-        save(newres,'-struct','resOut_copy');
-
-        % RUN MODEL FOR TEST YEARS
-        % PREDICTION
-        % Run HTF_predict        
-        testing_startDate = testFold(1);
-        testing_startMonth = datestr(testing_startDate, 'yyyymm');
-        %disp(testing_startMonth)
-
-        testing_endDate = testFold(end);
-        testing_endMonth = datestr(testing_endDate, 'yyyymm');
+        % Run prediction model
+        training_start_dt = datetime(training_startStr, 'InputFormat', 'yyyyMMdd');
+        training_startMonth = datestr(training_start_dt, 'yyyymm');
+        
+        training_end_dt = datetime(training_endStr, 'InputFormat', 'yyyyMMdd');
+        training_endMonth = datestr(training_end_dt, 'yyyymm');
 
         predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
-                      testing_startMonth,testing_endMonth,resOut,test_data); 
+                           resOut.yrMoTime(2),training_endMonth,resOut,data.data);  
 
         % copy mat file
-        newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(i));
+        newpred = sprintf('%s_pred',stationNumStr);
         save(newpred,'-struct','predOut');
 
         % SKILL ASSESSMENT
+        % get data that corresponds with predictions
+        timeInd = find(data.data.dateTime >= predOut.dateTime(1) & data.data.dateTime <= predOut.dateTime(end));
+
+        filteredData.dateTime = data.data.dateTime(timeInd);
+        filteredData.wl = data.data.wl(timeInd);
+
         % Run HTF_cross_valid_skill
         skillOut = HTF_cross_valid_skill(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
-                                     testing_startDate, testing_endDate,...
-                                     test_data,resOut,predOut);
+                                         training_start_dt, training_end_dt,...
+                                         filteredData,resOut,predOut)
     
-        allskillOut{i} = skillOut;
-        %disp(allskillOut{i})
+        % Sum total floods
+        total_Floods = skillOut.totalYes;
+        %disp(total_Floods)
+    
+        % Brier skill score
+        bss = skillOut.bss;
+        bssSE = skillOut.bssSE;
 
-        % copy mat file
-        newskill = sprintf('%s_skill_test_omit_%s',stationNumStr,num2str(i));
-        save(newskill,'-struct','skillOut');
+        %Confusion matrix and stats for the 5% warning threshold
+        recall = skillOut.recall;
+        falseAlarm = skillOut.falseAlarm;
         
+        if bss >= bssSE
+            skillful = 'yes';
+        else
+            skillful = 'no';
+        end    
+        %disp(skillful);
+    
+        %Define data to output to table        
+        output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods, skillful, bss,...
+                           bssSE, recall, falseAlarm};
+        disp(output_data)
+
     end
     
-    % Calculate the results for all training iterations 
-    % All observations of threshold being exceeded
-    validEntries_ynObs = cellfun(@(s) isstruct(s) && isfield(s, 'ynObs'), allskillOut);
-    ynObs_all_fields = cellfun(@(s) s.ynObs, allskillOut(validEntries_ynObs), 'UniformOutput', false);
-
-    ynObs_all_data = vertcat(ynObs_all_fields{:});
-
-    % All daily prob
-    validEntries_dailyProb = cellfun(@(s) isstruct(s) && isfield(s, 'dailyProb'), allskillOut);
-    dailyProb_all_fields = cellfun(@(s) s.dailyProb, allskillOut(validEntries_dailyProb), "UniformOutput", false);
-    dailyProb_all_data = vertcat(dailyProb_all_fields{:});
-    dailyProb_all = struct('dailyProb', dailyProb_all_data);
-
-    % Brier skill score for all
-    [bs_all, bss_all, bsSE_all, bssSE_all] = BrierScore(ynObs_all_data, dailyProb_all_data);
-    %disp(bs)
-
-    % Sum total floods
-    validEntries_floods = cellfun(@(s) isstruct(s) && isfield(s, 'totalYes'), allskillOut);
-    floods_all_fields = cellfun(@(s) s.totalYes, allskillOut(validEntries_floods), "UniformOutput", false);
-    floods_all_data = vertcat(floods_all_fields{:});
-    total_Floods_all = sum(floods_all_data);
-    %disp(total_Floods)
-
-    %Confusion matrix and stats for the 5% warning threshold
-    confusion05_all = confusionStats(ynObs_all_data, dailyProb_all_data,0.05);
-    recall_all = confusion05_all.recall;
-    falseAlarm_all = confusion05_all.falseAlarm;
-
-    % Average the results to get the final score
-    %totalFloodsValues = cellfun(@(s) s.totalYes, allskillOut); 
-    %total_Floods = mean(totalFloodsValues);
-    %disp(total_Floods);
-
-    %bssValues = cellfun(@(s) s.bss, allskillOut); 
-    %mean_bss = mean(bssValues);
-    %disp(mean_bss);
-
-    %bssSEValues = cellfun(@(s) s.bssSE, allskillOut);
-    %mean_bssSE = mean(bssSEValues);
-    %disp(mean_bssSE);
-
-    %recallValues = cellfun(@(s) s.recall, allskillOut);
-    %mean_recall = mean(recallValues);
-    %disp(mean_recall);
-
-    %falseAlarmValues = cellfun(@(s) s.falseAlarm, allskillOut);
-    %mean_falseAlarm = mean(falseAlarmValues);
-    %disp(mean_falseAlarm);
-
-    %if mean_bss >= mean_bssSE
-    %    skillful = 'yes';
-    %else
-    %    skillful = 'no';
-    %end    
-    %disp(skillful);
-    
-    if bss_all >= bssSE_all
-        skillful_all = 'yes';
-    else
-        skillful_all = 'no';
-    end    
-    %disp(skillful);
-
-    %Define data to output to table
-    %output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,mean_bss,...
-    %                   mean_bssSE, mean_recall, mean_falseAlarm};
-    %disp(output_data)
-    
-    output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods_all,skillful_all,bss_all,...
-                       bssSE_all, recall_all, falseAlarm_all};
-    disp(output_data)
-
     output_cell_array = [output_cell_array; output_data];
     
 
