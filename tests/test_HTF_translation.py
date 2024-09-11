@@ -22,7 +22,7 @@ def run_model_py(station,years_fit,years_pred):
                     years_pred=years_pred,
                     assess_method='DusekEtAl',
                     assess_metric='htf_days',
-                    holdout_num=None,
+                    holdout_num=1,
                     prctile_bin_val='pred_adj')
     model.train()
     model.assess()
@@ -77,6 +77,10 @@ def remove_master_branch():
     shutil.rmtree('temp_master-branch')
 
 def test_Charleston_1983_2001():
+    print('Comparing the Python and Matlab models at the Charleston tide gauge for 1983-2001. This takes a few minutes...')    
+    if os.path.isdir('temp_master-branch'):
+        remove_master_branch()
+    
     station = 8665530
     years_fit = [19830101,20011231]
     years_pred = [20020101,20021231]
