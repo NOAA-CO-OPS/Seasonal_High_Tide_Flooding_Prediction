@@ -84,39 +84,50 @@ def test_Charleston_1983_2001():
     station = 8665530
     years_fit = [19830101,20011231]
     years_pred = [20020101,20021231]
-        
+    
+    print('Running the Python version...')    
     model_py = run_model_py(station,years_fit,years_pred)
+    print('Running the Matlab version...')
     model_mat = run_model_mat(station,years_fit,years_pred)
     
     # Compare pred_adj #
+    print('Comparing adjusted predictions...')
     pred_adj_py = model_py.out_train['pred_adj']
     pred_adj_mat = model_mat['res']['predAdj']
     assert len(pred_adj_py) == len(pred_adj_mat) , 'Predictions from python version are not the same length as those from Matlab version, there is a problem with the python data download.'
     assert (((pred_adj_py['val']-pred_adj_mat)).dropna().abs() < 0.01).all() , 'Adjusted predictions from Python version are at least once more than 1 cm different than Matlab version'
+    print('Good!')
     
     # Compare the hourly non-tidal residuals #
+    print('Comparing non-tidal residuals...')
     res_py = model_py.out_train['resids']
     res_mat = model_mat['res']['res']
     assert len(res_py) == len(res_mat) , 'Residuals from python version are not the same length as those from Matlab version.'
     assert (((res_py['val']-res_mat)).dropna().abs() < 0.01).all() , 'Non-tidal residuals from Python version are at least once more than 1 cm different than Matlab version'
+    print('Good!')
 
     # Compare the calendar month averages of mu and sigma #
+    print('Comparing mu and sigma month averages...')
     month_mu_py = model_py.out_train['dists_time']['month_mu']
     month_mu_mat = model_mat['res']['mu_monthAvg']
     month_sigma_py = model_py.out_train['dists_time']['month_sigma']
     month_sigma_mat = model_mat['res']['sigma_monthAvg']
     assert ((month_mu_py['val']-month_mu_mat).abs() < 0.01).all() , 'Calendar month non-tidal residual averages (mu) from Python version are at least once more than 1 cm different than Matlab version'
     assert ((month_sigma_py['val']-month_sigma_mat).abs() < 0.01).all() , 'Calendar month non-tidal residual stdevs (sigma) from Python version are at least once more than 1 cm different than Matlab version'
+    print('Good!')
 
-    # Compare the tide level mu and sigma #    
+    # Compare the tide level mu and sigma #  
+    print('Comparing mu and sigma tidal percentiles...')
     prctile_mu_py = model_py.out_train['dists_tide']['prctile_mu']
     prctile_mu_mat = model_mat['res']['percentileMu']
     prctile_sigma_py = model_py.out_train['dists_tide']['prctile_sigma']
     prctile_sigma_mat = model_mat['res']['percentileSigma']
     assert ((prctile_mu_py['val']-prctile_mu_mat).abs() < 0.01).all() , 'Tide-level non-tidal residual averages (mu) from Python version are at least once more than 1 cm different than Matlab version'
     assert ((prctile_sigma_py['val']-prctile_sigma_mat).abs() < 0.01).all() , 'Tide-level non-tidal residual stdevs (sigma) from Python version are at least once more than 1 cm different than Matlab version'
+    print('Good!')
 
     # Compare monthly mu and sigma averages and anomolies #
+    print('Comparing monthly mu and sigma and anomalies...')
     monthly_mu_py = model_py.out_train['dists_time']['monthly_mu']
     monthly_mu_mat = model_mat['res']['mu_month']
     monthly_sigma_py = model_py.out_train['dists_time']['monthly_sigma']
@@ -129,26 +140,35 @@ def test_Charleston_1983_2001():
     assert ((monthly_sigma_py['val']-monthly_sigma_mat).dropna().abs() < 0.01).all() , 'Monthly sigma averages from Python version are at least once more than 1 cm different than Matlab version'
     assert ((monthly_anom_mu_py['val']-monthly_anom_mu_mat).dropna().abs() < 0.01).all() , 'Monthly mu anomalies from Python version are at least once more than 1 cm different than Matlab version'
     assert ((monthly_anom_sigma_py['val']-monthly_anom_sigma_mat).dropna().abs() < 0.01).all() , 'Monthly sigma anomalies from Python version are at least once more than 1 cm different than Matlab version'
+    print('Good!')
 
     # Compare damped persistence #
+    print('Comparing damped persistence values...')
     damped_per_py = model_py.out_train['damped_per']
     damped_per_mat = model_mat['res']['dampedPers']
     assert (abs(damped_per_py-damped_per_mat) < 0.01).all() , 'Damped persistence values from Python version are at least once more than 1 unit different than Matlab version'
+    print('Good!')
     
     # Compare hourly freeboard #
+    print('Comparing freeboard for prediction window...')
     freeboard_hourly_py = model_py.out_predict['freeboard']
     freeboard_hourly_mat = model_mat['pred']['freeboard']
     assert ((freeboard_hourly_py['val']--freeboard_hourly_mat).dropna().abs() < 0.01).all() , 'Hourly freeboard from Python version are at least once more than 1 cm different than Matlab version'
+    print('Good!')
        
     # Compare hourly probability #
+    print('Comparing predicted hourly probabilities...')
     prob_hourly_py = model_py.out_predict['prob_hourly']
     prob_hourly_mat = model_mat['pred']['hourlyProb']
     assert ((prob_hourly_py['val']-prob_hourly_mat).dropna().abs() < 0.01).all() , 'Hourly probabilities from Python version are at least once more than 1% different than Matlab version'
+    print('Good!')
 
     # Compare the daily probability #
+    print('Comparing daily predicted probabilities...')
     prob_daily_py = model_py.out_predict['prob_daily']
     prob_daily_mat = model_mat['pred']['dailyProb']
     assert ((prob_daily_py['val']-prob_daily_mat).dropna().abs() < 0.01).all() , 'Daily probabilities from Python version are at least once more than 1% different than Matlab version'
+    print('Good!')
     
     
     

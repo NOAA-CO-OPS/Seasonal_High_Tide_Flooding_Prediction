@@ -13,10 +13,9 @@ import pkg_resources
 import requests
 import scipy
 from sklearn.metrics import confusion_matrix
-import utide
 import warnings
 warnings.filterwarnings('ignore')
-
+import utide
 
 class HTF_model:
     '''
@@ -334,47 +333,40 @@ class HTF_model:
     
     @staticmethod
     def run(predictions,out_train):
-        # Get the years and months on which to run the model #
         yrmo = predictions['time'].dt.to_period('M').unique()
-        yru = np.unique(yrmo.year)
-        
-        for yr in yru:
-            # Get the observations for this year #
-            data_yr = predictions.copy()
-            data_yr = data_yr[data_yr['time'].dt.year==yr]
+        # Split into 12-month chunks #
+        chunks = [np.array(yrmo)[i:i + 12] for i in range(0, len(yrmo), 12)]
+        for chunk in chunks:
+            predictions_chunk = predictions[np.isin(predictions['time'].dt.to_period('M'),chunk)]       
+            try:
+                anom_preceeding = out_train['dists_time']['anom_mu'][out_train['dists_time']['anom_mu']['time']<predictions_chunk['time'].iloc[0]].iloc[-1]
+            except IndexError:
+                anom_preceeding = out_train['dists_time']['anom_mu'].iloc[0]
+                anom_preceeding.val = np.nan
+            persistence_apply = ModelEngine.calc_persistence_apply(anom_preceeding,
+                                                                   predictions_chunk,
+                                                                   out_train)
                 
-            # Get the anomoly value for the first month before this year, if it's available,
-            # and use it to calculate the damped persistence to use. If it is not
-            # available, i.e. if running on data from >1 after the training period, the
-            # damped persistence is set to 0 (i.e. predictions are made using
-            # only the month and tide level climatology).
-            dt = datetime.datetime(yr,1,1)-out_train['dists_time']['anom_mu']['time'].iloc[-1]
-            if dt<datetime.timedelta(days=32): # If the current year begins just after the training period ended #
-                persistence_apply = out_train['dists_time']['anom_mu']['val'].iloc[-1]*out_train['damped_per']
-            else: # If the current year begins a month or more after the end of the training period #
-                persistence_apply = 0*out_train['damped_per']
+            months = predictions_chunk['time'].dt.month.unique()
+            mu,sigma = ModelEngine.calc_dist_params(out_train,
+                                                    months,
+                                                    persistence_apply)
             
-            # Calculate total mu and sigma and use to make the cdf for each
-            # month and tide level.
-            px = np.arange(-2,15.005,0.005) # The NTRs at which to evaluate the cdf #
-            mu,sigma = ModelEngine.calc_dist_params(out_train['dists_time'],
-                                              out_train['dists_tide'],
-                                              persistence_apply,
-                                              px)
+            px = np.arange(-2,15.005,0.005)[0:-1] # The NTRs at which to evaluate the cdf #
             cy = ModelEngine.calc_cdf(px,
                                       mu,
                                       sigma)
-                   
+            
             # Add the sea level trend to the predictions #
-            pred_adj,adj = ModelEngine.add_trend(data_yr,
+            pred_adj,adj = ModelEngine.add_trend(predictions_chunk,
                                                  out_train['data']['SLT'],
                                                  out_train['data']['Epoch center'])
-            
-            
+        
+        
             # Calculate hourly freeboard from flood thresh to adjusted predictions #
             freeboard = ModelEngine.calc_freeboard(out_train['data']['Flood thresh'],
                                                    pred_adj)
-           
+       
             # Apply cdfs to determine probability that the NTR is >freeboard
             # for each hourly observation #
             prob_hourly = ModelEngine.calc_hourly_prob(cy,
@@ -382,14 +374,14 @@ class HTF_model:
                                                      pred_adj,
                                                      freeboard,
                                                      out_train['dists_tide'])
-            
+        
             # Use the hourly probabilities to compute cumulative daily probabilities,
             # taking into account the temporal dependence of NTR #
             prob_daily = ModelEngine.calc_daily_prob(prob_hourly,
                                                      freeboard,
                                                      out_train['resids'])
             
-            if yr==yru[0]:
+            if (chunk==chunks[0]).all():
                 freeboard_all = freeboard
                 prob_hourly_all = prob_hourly
                 prob_daily_all = prob_daily
@@ -397,11 +389,10 @@ class HTF_model:
                 freeboard_all = freeboard_all._append(freeboard,ignore_index=True)
                 prob_hourly_all = prob_hourly_all._append(prob_hourly,ignore_index=True)
                 prob_daily_all = prob_daily_all._append(prob_daily,ignore_index=True)
-            
+        
         out_run = {'freeboard':freeboard_all,
-                   'prob_hourly':prob_hourly_all,
-                   'prob_daily':prob_daily_all}
-       
+                    'prob_hourly':prob_hourly_all,
+                    'prob_daily':prob_daily_all}
         return out_run
 
     @staticmethod
@@ -529,6 +520,7 @@ class get_API_data:
                 while current_datetime <= end_dt:
                     datetimes_list.append(current_datetime)
                     current_datetime += datetime.timedelta(days=30)
+                datetimes_list.append(end_dt)
                 # Download data for each datetime interval and put into a DataFrame #
                 for i in range(len(datetimes_list)-1):                 
                     begin_dt_interval = datetimes_list[i]
@@ -546,9 +538,19 @@ class get_API_data:
                 data = data.drop_duplicates(subset='time', keep='first')
                 data = self.fill_gaps(data,begin_dt,end_dt)              
             else:
-                if prod not in ['datums','supersededdatums','harcon','sensors','details',
+                if prod in ['datums','supersededdatums','harcon','sensors','details',
                                    'notices','disclaimers','benchmarks','tidepredoffsets',
                                    'floodlevels']:
+                     url = self.build_url_mdapi(str(self.station),
+                                                None,None,product=prod,units=self.units)
+                     content = self.request_data(url)
+                     data = self.format_content_mdapi(content)
+                elif prod in ['sealvltrends']:
+                     url = self.build_url_dpapi(str(self.station),
+                                                None,None,product=prod)
+                     content = self.request_data(url)
+                     data = self.format_content_dpapi(content)
+                else:
                     url = self.build_url_dapi(str(self.station),self.begin_date,
                                     self.end_date,product=prod,
                                     units=self.units,datum_bias=self.datum_bias,
@@ -556,11 +558,6 @@ class get_API_data:
                     content = self.request_data(url)
                     data = self.format_content_dapi(content)
                     data = self.fill_gaps(data,utils.datestr2dt(self.begin_date),utils.datestr2dt(self.end_date))
-                else:
-                     url = self.build_url_mdapi(str(self.station),
-                                                None,None,product=prod,units=self.units)
-                     content = self.request_data(url)
-                     data = self.format_content_mdapi(content)
                      
             data_all[prod] = data
             
@@ -597,7 +594,17 @@ class get_API_data:
         
         url = (server + str(station) + '/'+product+'.json?units='+units)
     
-        return url    
+        return url  
+    
+    @staticmethod
+    def build_url_dpapi(station,begin_date=None,end_date=None,product='sealvltrends'):
+        
+        # CO-OPS metadata API server #
+        server = 'https://api.tidesandcurrents.noaa.gov/dpapi/prod/webapi/product/'
+        
+        url = (server + product + ".json?station=" + str(station) + "&affil=us")
+    
+        return url   
     
     @staticmethod
     def request_data(url):
@@ -625,6 +632,11 @@ class get_API_data:
         data_dict = {}
         for key in list(content.keys()):
             data_dict[key] = content[key]
+        return data_dict
+
+    @staticmethod 
+    def format_content_dpapi(content):
+        data_dict = content[list(content.keys())[-1]]
         return data_dict
     
     @staticmethod
@@ -782,7 +794,7 @@ class ModelEngine():
             monthyr = np.zeros([len(np.arange(1,n_year+1))*len(np.arange(1,13))],dtype='datetime64[ms]')
             c=-1
             for yr in np.arange(1,n_year+1):
-                for mo in np.arange(1,13):
+                for mo in np.arange(1,13): 
                     c+=1
                     iyrmo = np.logical_and(resids_years==resids['time'].iloc[0].to_pydatetime().year+yr-1,resids_months==mo)
                     mu = resids['val'][iyrmo].mean()
@@ -791,14 +803,14 @@ class ModelEngine():
                     monthyr_sigma[mo-1,yr-1] = sigma
                     monthyr[c] = datetime.datetime(resids['time'].iloc[0].to_pydatetime().year+yr-1,
                                                    mo,1)
+
             monthly_mu = pd.DataFrame({'time':monthyr,
-                                       'val':monthyr_mu.T.reshape(-1)})
+                                        'val':monthyr_mu.T.reshape(-1)})
             monthly_sigma = pd.DataFrame({'time':monthyr,
-                                       'val':monthyr_sigma.T.reshape(-1)})
+                                        'val':monthyr_sigma.T.reshape(-1)})
                     
-            # Take the average for each month across the years to get the monthlly climatology #
             month_mu = pd.DataFrame({'time':np.arange(1,13),
-                                     'val':np.nanmean(monthyr_mu,axis=1)})
+                                      'val':np.nanmean(monthyr_mu,axis=1)})
             month_sigma = pd.DataFrame({'time':np.arange(1,13),
                                         'val':np.nanmean(monthyr_sigma,axis=1)})
             
@@ -873,9 +885,18 @@ class ModelEngine():
         
     @staticmethod
     def damped_persistence(anom_mu):
+        # Calculate the 95% confidence value for the autocorrelation for a
+        # data record of the given length. #
+        conf95 = np.sqrt(2)*scipy.special.erfcinv(2*.05/2)
         # Do the auto correlation calculation #
-        r = scipy.signal.correlate(anom_mu['val'].interpolate(),anom_mu['val'].interpolate(),mode='same')
-        lags = scipy.signal.correlation_lags(len(anom_mu),len(anom_mu))
+        if np.isnan(anom_mu['val'].iloc[0]): # If the dates are not round years (do not start in January) #
+            r = scipy.signal.correlate(anom_mu['val'].dropna(),anom_mu['val'].dropna(),mode='same')
+            lags = scipy.signal.correlation_lags(len(anom_mu.dropna()),len(anom_mu.dropna()))
+            upconf = conf95/np.sqrt(len(anom_mu.dropna()))
+        else:
+            r = scipy.signal.correlate(anom_mu['val'].interpolate(),anom_mu['val'].interpolate(),mode='same')
+            lags = scipy.signal.correlation_lags(len(anom_mu),len(anom_mu))
+            upconf = conf95/np.sqrt(len(anom_mu.interpolate()))
         # Take only the values that are +/-12 lags (months) from the midpoint (0 lags)
         r = r[int(len(r)/2)-12:int(len(r)/2)+13]
         lags = lags[int(len(lags)/2)-12:int(len(lags)/2)+13]
@@ -884,10 +905,6 @@ class ModelEngine():
         # Take only the positive part, from lag=1 month to lag=12 months #
         r = r[13:len(r)]
         lags = lags[13:len(lags)]
-        # Calculate the 95% confidence value for the autocorrelation for a
-        # data record of the given length. #
-        conf95 = np.sqrt(2)*scipy.special.erfcinv(2*.05/2)
-        upconf = conf95/np.sqrt(len(anom_mu))
         # Take the damped persistance of each month to be the r values, until
         # the r value drops below the 95% confidence level. Once it does, set 
         # that and all remaining month values to 0. #
@@ -898,14 +915,34 @@ class ModelEngine():
         return r
     
     @staticmethod
-    def calc_dist_params(dists_time,dists_tide,persistence_apply,px):
-        mu = np.zeros([12,len(dists_tide['prctile_mu'])])
-        sigma = np.zeros([12,len(dists_tide['prctile_mu'])])
-        for imo in np.arange(0,12):
-            for itide in np.arange(0,len(dists_tide['prctile_mu'])):
-                mu[imo,itide] = dists_time['month_mu']['val'].iloc[imo] + persistence_apply[imo] + dists_tide['prctile_mu']['val'].iloc[itide]
-                sigma[imo,itide] = dists_time['month_sigma']['val'].iloc[imo] + dists_tide['prctile_sigma']['val'].iloc[itide]
-        return mu,sigma    
+    def calc_persistence_apply(anom_preceeding,predictions,out_train):
+        if np.isnan(anom_preceeding['val']) or predictions['time'].iloc[0]-anom_preceeding['time']>datetime.timedelta(days=31):
+            print('Warning: No observed SL anomoly value for the month preceeding the '+
+                 'first prediction month, using a previous month or climatology instead.')
+            anom_prev = out_train['dists_time']['anom_mu'][out_train['dists_time']['anom_mu']['time']<predictions['time'].iloc[0]].iloc[-12:]
+            anom_prev_valid = anom_prev.dropna()
+            if len(anom_prev_valid)>0:
+                iLastGood = int(np.where(anom_prev_valid['val'].iloc[-1]==anom_prev['val'])[0])           
+                amlyApply=anom_prev.iloc[iLastGood]['val']
+                dampedApply=np.zeros([12]);
+                dampedApply[0:iLastGood+1]=out_train['damped_per'][11-iLastGood:12];
+                persistence_apply = amlyApply*dampedApply;
+            else:
+                persistence_apply = np.zeros(12)
+        else:
+            persistence_apply = anom_preceeding['val']*out_train['damped_per']
+        return persistence_apply
+    
+    @staticmethod
+    def calc_dist_params(out_train,months,persistence_apply):
+        mu = np.zeros([12,len(out_train['dists_tide']['prctile_mu'])])
+        sigma = np.zeros([12,len(out_train['dists_tide']['prctile_mu'])])
+        for i in range(len(months)):
+            month = months[i]
+            for j in range(len(out_train['dists_tide']['prctile_mu'])):
+                mu[month-1,j] = out_train['dists_time']['month_mu'].iloc[month-1]['val'] + persistence_apply[i] + out_train['dists_tide']['prctile_mu'].iloc[j]['val']
+                sigma[month-1,j] = out_train['dists_time']['month_sigma'].iloc[month-1]['val'] +  out_train['dists_tide']['prctile_sigma'].iloc[j]['val']
+        return mu,sigma 
     
     @staticmethod
     def calc_cdf(px,mu,sigma):
@@ -936,7 +973,6 @@ class ModelEngine():
         Apply cdfs to determine probability that the NTR is >freeboard
         for each hourly observation 
         '''
-                
         pctile_bins = [dists_tide['prctile_mu']['prctile bin'][i].left for i in range(len(dists_tide['prctile_mu']))]
         pctile_bins.append(dists_tide['prctile_mu']['prctile bin'][len(dists_tide['prctile_mu']['prctile bin'])-1].right)           
         freeboard['prctile bin'] = pd.cut(pred_adj['val'],
@@ -1211,6 +1247,8 @@ class utils:
         c = 2 * np.arcsin(np.sqrt(a))
         km = R * c
         return km        
+
+            
         
         
         

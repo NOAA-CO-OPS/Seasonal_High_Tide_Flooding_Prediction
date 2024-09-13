@@ -13,9 +13,10 @@ import pkg_resources
 import requests
 import scipy
 from sklearn.metrics import confusion_matrix
-import utide
 import warnings
 warnings.filterwarnings('ignore')
+import utide
+
 
 
 class HTF_model:
@@ -49,7 +50,7 @@ class HTF_model:
         The type of high tide flood threshold two use. Options are:
             'NWS': The published minor threshold from NWS at the tide gauge, if a gauge
                    id was input for loc. Not available if a lat/lon was input.
-            'MHHW': Use a threshold value relative to MHHW. Can also be any other
+            'MHHW' or etc.: Use a threshold value relative to MHHW. Can also be any other
                     standard tidal datum, for example MSL, MHW, MLW, MLLW to use
                     a threshold value relative to that elevation.
         The default is 'NWS'
@@ -65,13 +66,12 @@ class HTF_model:
             'DusekEtAl': The original method used in Duset et al. (2022).
                          Fully in-sample, i.e. assess the model on the same
                          data that the model was trained on.
-            'xvalid_batch': Train the model on one set of observations, assess
-                           it on another.
-            'xvalid_holdout': Using some number of years of observations, train
-                             the model using the observations but with holdout_num
-                             years witheld, cycling through all years. The final
-                             skill assessment is then the compilation of all
-                             of the sub-assessments.
+            'out_of_sample': Sinple train-test split. Train the model on one set 
+                            of observations, assess it on another.
+            'cross_validation': K-fold cross-validation. Split the training data into
+                                k subsets (folds). Re-train the data on k-1 folds and
+                                evaluate it on the remaining fold, doing this
+                                for all folds and aggregating the results.
             'None': Do not perform an assessment.
         The default is 'DusekEtAl'.
         
@@ -81,9 +81,9 @@ class HTF_model:
             OTHERS CAN BE INSERTED HERE
         The default is 'htf_days'.
         
-    holdout_num : int, optional
-        The number of years to holdout at a time if using the xcorr_houldout 
-        assesment method. Required if using the xcorr_holdout assessment method,
+    fold_size : int, optional
+        The zize of the folds if using the cross-validation
+        assesment method. Required if using the cross_validation assessment method,
         ignored otherwise.The deafault is 1 year.
         
     prctile_bin_val: str, optional
@@ -129,7 +129,7 @@ class HTF_model:
     def __init__(self,loc,years_fit,years_assess,years_pred,
                  thresh_type='NWS',thresh_rel=0,
                  assess_method='DusekEtAl',assess_metric='htf_days',
-                 holdout_num=1,prctile_bin_val='pred_adj',):      
+                 fold_size=1,prctile_bin_val='pred_adj',):      
         '''
         Initializes the HTF model and does initial error checking of inputs.
 
@@ -142,7 +142,7 @@ class HTF_model:
         self.thresh_rel = thresh_rel
         self.assess_method = assess_method
         self.assess_metric = assess_metric
-        self.holdout_num = holdout_num
+        self.fold_size = fold_size
         self.prctile_bin_val = prctile_bin_val
 
         # Check that either a NWLON or lat/lon were provided correctly #
@@ -158,8 +158,8 @@ class HTF_model:
                 raise ValueError("NWS thresholds are not available for non-tide gauge locations. You can use a standard tidal datum (e.g. 'MHHW') along with thresh_rel to specify a threshold.")
         
         # Check that valid options were provided for the remaining inputs. #
-        if self.assess_method not in ['DusekEtAl','xvalid_batch','xvalid_holdout','None']:
-                raise ValueError("The assessment method must be one of: 'DusekEtAl', 'xvalid_batch', 'xvalid_holdout', 'None'")
+        if self.assess_method not in ['DusekEtAl','out_of_sample','cross_validation','None']:
+                raise ValueError("The assessment method must be one of: 'DusekEtAl', 'out_of_sample', 'cross_validation', 'None'")
         if self.assess_metric not in ['htf_days']:
                 raise ValueError("The assessment metric must be one of: 'htf_days'")            
         if self.prctile_bin_val not in ['pred','pred_adj']:
@@ -201,8 +201,8 @@ class HTF_model:
         if self.assess_method == 'DusekEtAl':
             # Run the trained model on the same data as it was trained on #
             print('Running the trained model on the same observations...')
-            self.out_assess = self.run(self.out_train['data'],
-                                       self.out_train) 
+            self.out_assess = self.run(self.out_train['data']['predictions'],
+                                       self.out_train)
             # Do the skill assessment #
             print('Calclating model skill on the same observations...')
             self.skill = self.calc_skill(self.out_train['data'],
@@ -210,25 +210,46 @@ class HTF_model:
                                          self.assess_metric)
             
         
-        elif self.assess_method == 'xvalid_batch':
+        elif self.assess_method == 'out_of_sample':
             # Get the new out-of-training-sample data for the validation #
             print('Downloading and formatting the new out of sample observations. This can take a while...')
             data = self.pull_data(self.loc,self.years_assess,'lst_ldt')           
             # Run the trained model on the new data #
             print('Running the trained model on the new observations...')
-            self.out_assess = self.run(data,self.out_train)                                                  
+            self.out_assess = self.run(data['predictions'],self.out_train)                                                  
             # Do the skill assessment #
             print('Calclating model skill on the new observations...')
             self.skill = self.calc_skill(data,self.out_assess,self.assess_metric)
                        
-        elif self.assess_method == 'xvalid_holdout':
-            pass # Translate Karen's Matlab version here #
+        elif self.assess_method == 'cross_validation':
+            # Determine the folds #
+            yrs = self.out_train['data']['hourly_height']['time'].dt.year.unique()
+            set_test = [np.arange(i,i+self.fold_size) for i in np.arange(yrs[0],yrs[-1]+1,self.fold_size)]
+            set_train = [yrs[~np.isin(yrs,i)] for i in set_test]
+            folds = pd.DataFrame({'train':set_train,'test':set_test})
+            # For each fold, re-train on training data and test on testing data #
+            skill_all = []
+            for nfold in range(len(folds)):
+                print('Re-training, re-running, and assessing the model on fold '+str(nfold+1)+' of '+str(len(folds)))
+                i_test = np.isin(self.out_train['data']['hourly_height']['time'].dt.year,folds['test'].iloc[nfold])
+                data_retrain = self.out_train['data'].copy()
+                data_rerun = self.out_train['data'].copy()
+                data_retrain['predictions'] = data_retrain['predictions'][~i_test]
+                data_retrain['hourly_height'] = data_retrain['hourly_height'][~i_test]
+                data_rerun['predictions'] = data_rerun['predictions'][i_test]
+                data_rerun['hourly_height'] = data_rerun['hourly_height'][i_test]
+
+                out_retrain = self.calc_resids_and_dists(data_retrain,bin_val=self.prctile_bin_val)
+                out_rerun = self.run(data_rerun['predictions'],out_retrain)
+                out_reskill = self.calc_skill(data_rerun,out_rerun,self.assess_metric)
+                skill_all.append(out_reskill)
+            self.skill = skill_all            
         
         elif self.assess_method == 'None':
                 raise ValueError(r'The assessment method was set to None, so no assessment can be'+
                                  ' performed. If you would like to perform an assessment, choose'+
                                  ' an assessment method: DusekEtAl, xvalid_batch, or xvalid_holdout.')
-        
+       
     def predict(self):
         '''
         Function to predict with the trained model using the prediction years.
@@ -245,13 +266,13 @@ class HTF_model:
 
         print('Generating predictions with the trained model...')
 
-        # Get the new out-of-training-sample data for the prediction #
-        print('Downloading and formatting the new out of sample observations. This can take a while...')
-        data = self.pull_data(self.loc,self.years_pred,'lst_ldt')           
+        # Get the predictions for the prediction period #
+        print('Getting the tide predictions for the prediction period...')
+        predictions = self.pull_predictions(self.loc,self.out_train,self.years_pred,'lst_ldt')           
         
         # Run the trained model on the new data #
-        print('Running the trained model on the new observations...')
-        self.out_predict = self.run(data,self.out_train) 
+        print('Running the trained model with the predictions...')
+        self.out_predict = self.run(predictions,self.out_train)
 
            
     @staticmethod    
@@ -298,9 +319,10 @@ class HTF_model:
                 flood_thresh = data_nonapi['Derived Minor'].iloc[0]
             else:
                 datums = get_API_data(loc,str(years[0]),str(years[1]),
-                                    product='datums').run()['datums']['datums']
+                                    product='datums').run()['datums']['datums'] # Datums are returned relative to the station datum #
+                z_mhhw = np.array(datums)[np.array([datums[i]['name'] for i in range(len(datums))]) == 'MHHW'][0]['value']
                 thresh1 = np.array(datums)[np.array([datums[i]['name'] for i in range(len(datums))]) == thresh_type][0]['value']
-                flood_thresh = thresh1+thresh_rel
+                flood_thresh = thresh1+thresh_rel-z_mhhw
             
             data = {'ID':data_nonapi['St ID'].iloc[0],
                     'Name':data_nonapi['Station Name'].iloc[0],
@@ -365,16 +387,31 @@ class HTF_model:
         return out     
     
     @staticmethod
-    def run(data,out_train):
+    def pull_predictions(loc,out_train,years,time_zone):
+        if isinstance(loc,int):
+            print('Downloading predictions for prediction window...')
+            predictions = get_API_data(loc, str(years[0]), str(years[1]),
+                                product='predictions',
+                                time_zone=time_zone).run()['predictions']                 
+        elif isinstance(loc,list):
+            dt_start = utils.datestr2dt(str(years[0]))
+            dt_end = utils.datestr2dt(str(years[1]))
+            dt_end = datetime.datetime(dt_end.year,dt_end.month,dt_end.day,23,0,0)
+            time_pred = pd.date_range(dt_start,dt_end,freq='h')
+            print('Calculating tidal predictions...')
+            predictions = CoraEngine.calc_predictions(out_train['data']['hourly_height'],loc[0],time_pred)
+        return predictions
+    
+    @staticmethod
+    def run(predictions,out_train):
         # Get the years and months on which to run the model #
-        yrmo = data['hourly_height']['time'].dt.to_period('M').unique()
+        yrmo = predictions['time'].dt.to_period('M').unique()
         yru = np.unique(yrmo.year)
         
         for yr in yru:
             # Get the observations for this year #
-            data_yr = data.copy()
-            for k in ['hourly_height','predictions']:
-                data_yr[k] = data_yr[k][data_yr[k]['time'].dt.year==yr]
+            data_yr = predictions.copy()
+            data_yr = data_yr[data_yr['time'].dt.year==yr]
                 
             # Get the anomoly value for the first month before this year, if it's available,
             # and use it to calculate the damped persistence to use. If it is not
@@ -397,23 +434,21 @@ class HTF_model:
             cy = ModelEngine.calc_cdf(px,
                                       mu,
                                       sigma)
-
-                    
+                   
             # Add the sea level trend to the predictions #
-            pred_adj,adj = ModelEngine.add_trend(data_yr['predictions'],
-                                                 data['SLT'],
-                                                 data['Epoch center'])
+            pred_adj,adj = ModelEngine.add_trend(data_yr,
+                                                 out_train['data']['SLT'],
+                                                 out_train['data']['Epoch center'])
             
             
             # Calculate hourly freeboard from flood thresh to adjusted predictions #
-            freeboard = ModelEngine.calc_freeboard(data['Flood thresh'],
+            freeboard = ModelEngine.calc_freeboard(out_train['data']['Flood thresh'],
                                                    pred_adj)
            
             # Apply cdfs to determine probability that the NTR is >freeboard
             # for each hourly observation #
             prob_hourly = ModelEngine.calc_hourly_prob(cy,
                                                      px,
-                                                     data_yr,
                                                      pred_adj,
                                                      freeboard,
                                                      out_train['dists_tide'])
@@ -955,8 +990,7 @@ class ModelEngine():
                     cy[imo,itide,:] = 1-cdf
         else:
             cdf = scipy.stats.norm.cdf(px,loc=mu[imo,itide],scale=sigma[imo,itide])
-            cy[imo,itide,:] = 1-cdf            
-                    
+            cy[imo,itide,:] = 1-cdf                                
         return cy
     
     @staticmethod 
@@ -966,7 +1000,7 @@ class ModelEngine():
         return freeboard
 
     @staticmethod
-    def calc_hourly_prob(cy,px,data,pred_adj,freeboard,dists_tide):
+    def calc_hourly_prob(cy,px,pred_adj,freeboard,dists_tide):
         '''
         Apply cdfs to determine probability that the NTR is >freeboard
         for each hourly observation 
@@ -977,7 +1011,7 @@ class ModelEngine():
         freeboard['prctile bin'] = pd.cut(pred_adj['val'],
                                          bins=pctile_bins,
                                          labels=False)
-        freeboard['month bin'] = pd.cut(data['hourly_height']['time'].dt.month,
+        freeboard['month bin'] = pd.cut(pred_adj['time'].dt.month,
                                          bins=np.arange(1,14),
                                          right=False,labels=False)
         def find_ipx(val):
@@ -993,8 +1027,7 @@ class ModelEngine():
         prob_hourly1[np.isnan(freeboard['val'])] = np.nan
         
         prob_hourly = pred_adj.copy()
-        prob_hourly['val'] = prob_hourly1
-        
+        prob_hourly['val'] = prob_hourly1       
         return prob_hourly
     
     @staticmethod
@@ -1031,8 +1064,7 @@ class ModelEngine():
         
         prob_daily = pd.DataFrame({'time':t_day,
                                    'val':prob_day,
-                                   'max freeboard':freeboard_daily_max})
-        
+                                   'max freeboard':freeboard_daily_max})      
         return prob_daily
     
     @staticmethod
@@ -1083,8 +1115,7 @@ class ModelEngine():
             var_mse,var_var,cov_mse,var_bss = self.calc_quantities(mean_obs,var_obs,n,bs,
                                                       m1_1,m2_1,m2_0,m3_1,m4,
                                                       d1,d2,d3)
-            bs_se,bss_se = self.calc_se(var_mse,var_bss)
-            
+            bs_se,bss_se = self.calc_se(var_mse,var_bss)            
             return bs,bss,bs_se,bss_se
             
         
@@ -1131,19 +1162,26 @@ class ModelEngine():
         # Find where the predicted daily probaability is > min_prob #
         pred['exceeded thresh'] = (pred['val']>min_prob).astype(int)
         
-        # Generate a confusion matrix based on these predicted flood days
-        C = confusion_matrix(obs['val'],pred['exceeded thresh'])
-        n_true_neg = C[0,0]
-        n_true_pos = C[1,1]
-        n_false_neg = C[1,0]
-        n_false_pos = C[0,1]
-        
-        # Calculate stats #
-        accuracy = (n_true_pos+n_true_neg) / len(pred)
-        precision = n_true_pos / (n_true_pos+n_false_pos)
-        recall = n_true_pos / (n_true_pos+n_false_neg)
-        false_alarm = n_false_pos / (n_true_neg+n_false_pos)
-        F1=2 * ((precision*recall)/(precision+recall));
+        if (pred['exceeded thresh']==0).all() and (obs['val']==0).all(): # If there are no flood days observed or predicted #
+            accuracy=1
+            precision=0
+            recall = np.inf
+            false_alarm=0
+            F1 = np.inf
+        else:
+            # Generate a confusion matrix based on these predicted flood days
+            C = confusion_matrix(obs['val'],pred['exceeded thresh'])
+            n_true_neg = C[0,0]
+            n_true_pos = C[1,1]
+            n_false_neg = C[1,0]
+            n_false_pos = C[0,1]
+            
+            # Calculate stats #
+            accuracy = (n_true_pos+n_true_neg) / len(pred)
+            precision = n_true_pos / (n_true_pos+n_false_pos)
+            recall = n_true_pos / (n_true_pos+n_false_neg)
+            false_alarm = n_false_pos / (n_true_neg+n_false_pos)
+            F1=2 * ((precision*recall)/(precision+recall));
 
         return accuracy,precision,recall,false_alarm,F1
 
