@@ -5,7 +5,7 @@ Created on Wed Aug 21 16:12:38 2024
 @author: Matthew.Conlin
 """
 
-from Seasonal_High_Tide_Flooding_Prediction.HTF import HTF_model
+from HTF.HTF import HTF_model
 import numpy as np
 import os
 import pandas as pd
@@ -16,10 +16,12 @@ import stat
 import subprocess
 
 def run_model_py(station,years_fit,years_pred):
-    model = HTF_model(station,
+    model = HTF_model(loc=station,
                     years_fit=years_fit,
                     years_assess=None,
                     years_pred=years_pred,
+                    thresh_type='NWS',
+                    thresh_rel=0,
                     assess_method='DusekEtAl',
                     assess_metric='htf_days',
                     holdout_num=1,
