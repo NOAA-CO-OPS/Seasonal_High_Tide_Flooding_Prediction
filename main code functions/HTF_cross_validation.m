@@ -1,14 +1,36 @@
 function HTF_cross_validation(stationList, training_startStr, training_endStr, ...
-    numFolds, holdOut, stationIndex)
+    months_or_folds, numMonths_or_numFolds, holdOut, random_or_seq, stationIndex)
 
 %Function to conduct cross validation of monthly high tide flooding outlook
 %model.
 %
-%Separate data into sets for training and testing the model.
 
 %Parameters
-%Training years: e.g. 1997-2019, cross-validate hindcasts for those years
-%Testing years: e.g. 2020-present, generate "retrospective forecasts"
+%
+% stationList - is the list of HTF stations to download along with necessary
+%   metadata.  For now using:stationList = 'HighTideOutlookStationList_11_17_21.xlsx'
+
+% training_startStr and training_endStr - are the dates in format 'yyyymmdd' for when to start
+%   and stop downloading the hourly data - these should only be dates at the
+%   first and last days of a given month. For example:
+%       startStr='20030301'
+%       endStr='20230228'
+
+% months_or_folds - is a variable that specifies whether to determine the
+%    number of folds to split the data into for cross-validation by
+%    directly indicating the number of folds ("folds") or by indicating the
+%    number of months to include ("months"). 
+
+% numMonths_or_numFolds - is either the number of months to include each group 
+%   that the data is split into for cross-validation OR the number of folds
+%   or groups that the data is split into. 
+
+% holdOut - is a binary "yes" or "no" which indicates whether each fold
+% should be held out of the training dataset and tested. If "no", then all
+% of the data will be used to train the model and be part of the test.
+
+% stationIndex - is the indices in the HTF station list that you want to run
+%   the code for. Set stationIndex = [], to run for all stations.
 
 %% Import the information from HTF Station List
 listIn=importdata(stationList);
@@ -47,46 +69,90 @@ training_years = training_startYear:training_endYear;
 % Create datetime array with hourly intervals
 training_timeSeries = training_start_date_time:hours(1):training_end_date_time;
 
-% Calculate the number of days and hours in each fold
-%numDays = length(training_timeSeries);
+%numDays = length(training_timeSeries); 
 uniqueMonths = unique(month(training_timeSeries) + year(training_timeSeries)*100);
 numMonths = length(uniqueMonths);
-numFolds = numFolds;
-foldSize = floor(numMonths / numFolds);
-%disp(foldSize)
+disp(numMonths)
+
+% Option 1: Determine the number of folds from the specified number of months
+% in each fold
+if months_or_folds == "months"
+    foldSize = numMonths_or_numFolds;
+    numFolds = floor(numMonths / foldSize);
+    disp(numFolds)
+
+% Option 2: Calculate the number of days and hours in each fold   
+elseif months_or_folds == "folds"
+    numFolds = numMonths_or_numFolds;
+    foldSize = floor(numMonths / numFolds);
+    %disp(foldSize)
+
+end    
 
 % Separate the time series into folds without splitting months
 folds = cell(1, numFolds);
 
-currentMonthIdx = 1;
+% Option 1 - Randomly select unique months to hold out
+if random_or_seq == "random"
+    % Karen - this isn't working and completely random doesn't necessarily
+    % make sense if seasonality has some affect. I could specify the months
+    % to always include. However, would non-consecutive data mess up the
+    % training anyway? The code just isn't written this way.
+    
+    % Randomly partition months into k groups
+    cv = cvpartition(numMonths, 'KFold', numFolds);
 
-for i = 1:numFolds
+    for i = 1:numFolds
+        % Get the training and validation months
+        testIdx = test(cv, i); 
+        trainIdx = training(cv, i);
 
-    startMonthIdx = currentMonthIdx;
+        valMonths = uniqueMonths(testIdx);
+        trainMonths = uniqueMonths(trainIdx);
 
-    if i < numFolds
-        endMonthIdx = startMonthIdx + foldSize - 1;
-    else
-        endMonthIdx = numMonths;
-    end
+        foldIndices = ismember(month(training_timeSeries) + year(training_timeSeries)*100, valMonths);
+        folds{i} = training_timeSeries(foldIndices);
+        disp(folds{i})
+    end    
+  
+% Option 2 - Select a sequence unique months to hold out
+elseif random_or_seq == "sequence"
 
-    selectedMonths = uniqueMonths(startMonthIdx:endMonthIdx);
+    currentMonthIdx = 1;
+    
+    for i = 1:numFolds
+    
+        startMonthIdx = currentMonthIdx;
+    
+        if i < numFolds
+            endMonthIdx = startMonthIdx + foldSize - 1;
+        else
+            endMonthIdx = numMonths;
+        end
+        
+        selectedMonths = uniqueMonths(startMonthIdx:endMonthIdx);
 
-    foldIndices = ismember(month(training_timeSeries) + year(training_timeSeries)*100, selectedMonths);
+        foldIndices = ismember(month(training_timeSeries) + year(training_timeSeries)*100, selectedMonths);    
+    
+        folds{i} = training_timeSeries(foldIndices);
+        %disp(folds{i})
+        
+        currentMonthIdx = endMonthIdx + 1;        
 
-    folds{i} = training_timeSeries(foldIndices);
-    %disp(folds{i})
-
-    currentMonthIdx = endMonthIdx + 1;
+    end   
 
 end
+  
 
 % Initialize empty array for output
 %output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
 %                       'avg_bss', 'avg_bssSE', 'avg_recall', 'avg_false_alarm'};
 % Initialize empty array for output
+%output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
+%                       'bss', 'bssSE', 'recall', 'false_alarm'};
 output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
-                       'bss', 'bssSE', 'recall', 'false_alarm'};
+                       'bss', 'bssSE', 'recall', 'false_alarm', 'bss_upperQ', 'bssSE_upperQ'...
+                       'recall_upperQ', 'falseAlarm_upperQ'};
 output_cell_array = [];
 %output_cell_array = cell(n, length(output_columnNames));
 output_cell_array = [output_cell_array, output_columnNames];
@@ -101,7 +167,6 @@ for stn_i = stationIndex
 
     %Create an array to store skill assessment output
     allskillOut = cell(1, length(numFolds));
-
     
     % Data for training
     %training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
@@ -214,7 +279,22 @@ for stn_i = stationIndex
     
         % Brier skill score for all
         [bs_all, bss_all, bsSE_all, bssSE_all] = BrierScore(ynObs_all_data, dailyProb_all_data);
-        %disp(bs)
+        %disp(bs_all)
+
+        % Brier skill score for upper quintile of observations
+        %upperQuantileThreshold = quantile(ynObs_all_data, 0.8);
+        %observedUpperQuantile = ynObs_all_data >= upperQuantileThreshold;
+        %[bs_upperQ, bss_upperQ, bsSe_upperQ, bssSE_upperQ] = BrierScore(observedUpperQuantile, dailyProb_all_data);
+
+        % All daily obs
+        validEntries_dailyObs = cellfun(@(s) isstruct(s) && isfield(s, 'dailyObs'), allskillOut);
+        dailyObs_all_data = cellfun(@(s) s.dailyObs, allskillOut(validEntries_dailyObs), "UniformOutput", false);        
+
+        upperQuantileThreshold = quantile(dailyObs_all_data, 0.8);
+        %disp(upperQuantileThreshold)
+        observedUpperQuantile = dailyObs_all_data >= upperQuantileThreshold;
+        disp(observedUpperQuantile)
+        [bs_upperQ, bss_upperQ, bsSe_upperQ, bssSE_upperQ] = BrierScore(observedUpperQuantile, dailyProb_all_data);
     
         % Sum total floods
         validEntries_floods = cellfun(@(s) isstruct(s) && isfield(s, 'totalYes'), allskillOut);
@@ -224,18 +304,27 @@ for stn_i = stationIndex
         %disp(total_Floods)
     
         %Confusion matrix and stats for the 5% warning threshold
-        confusion05_all = confusionStats(ynObs_all_data, dailyProb_all_data,0.05);
+        confusion05_all = confusionStats(ynObs_all_data, dailyProb_all_data, 0.05);
         recall_all = confusion05_all.recall;
         falseAlarm_all = confusion05_all.falseAlarm; 
+
+        %Confusion matrix and stats for the upper quantile
+        observedUpperQuantile = double(observedUpperQuantile);
+        confusion05_upperQ = confusionStats(observedUpperQuantile, dailyProb_all_data, 0.05);
+        recall_upperQ = confusion05_upperQ.recall;
+        falseAlarm_upperQ = confusion05_upperQ.falseAlarm;
 
         if bss_all >= bssSE_all
             skillful_all = 'yes';
         else
             skillful_all = 'no';
         end    
-    
+
+        %output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods_all,skillful_all,bss_all,...
+        %               bssSE_all, recall_all, falseAlarm_all};        
         output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods_all,skillful_all,bss_all,...
-                       bssSE_all, recall_all, falseAlarm_all};
+                       bssSE_all, recall_all, falseAlarm_all, bss_upperQ, bssSE_upperQ...
+                       recall_upperQ, falseAlarm_upperQ};
         disp(output_data)
     
     elseif holdOut == "no"        
@@ -286,7 +375,7 @@ for stn_i = stationIndex
         % Run HTF_cross_valid_skill
         skillOut = HTF_cross_valid_skill(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
                                          training_start_dt, training_end_dt,...
-                                         filteredData,resOut,predOut)
+                                         filteredData,resOut,predOut);
     
         % Sum total floods
         total_Floods = skillOut.totalYes;
@@ -309,7 +398,7 @@ for stn_i = stationIndex
     
         %Define data to output to table        
         output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods, skillful, bss,...
-                           bssSE, recall, falseAlarm};
+                           bssSE, recall, falseAlarm, bss_upperQ, bssSE_upperQ};
         disp(output_data)
 
     end

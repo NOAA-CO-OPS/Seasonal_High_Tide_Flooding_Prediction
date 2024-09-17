@@ -128,6 +128,7 @@ subset_endDate = testing_startDate + calmonths(12);
 
 %set up the output arrays
 nDays = ceil(days(dTime(end)-dTime(1)));
+%disp(nDays)
 dTimeDays=NaT(nDays,1);
 ynObs=NaN(nDays,1);
 dailyObs=NaN(nDays,1);
@@ -149,7 +150,7 @@ for i =1:nDays
         ynObs(i)=0;
     end 
 end
-
+%disp(ynObs)
 
 %%
 %Now we will go through the daily obs array and for each month, find the
