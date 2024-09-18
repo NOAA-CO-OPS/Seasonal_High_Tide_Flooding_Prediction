@@ -281,15 +281,12 @@ for stn_i = stationIndex
         [bs_all, bss_all, bsSE_all, bssSE_all] = BrierScore(ynObs_all_data, dailyProb_all_data);
         %disp(bs_all)
 
-        % Brier skill score for upper quintile of observations
-        %upperQuantileThreshold = quantile(ynObs_all_data, 0.8);
-        %observedUpperQuantile = ynObs_all_data >= upperQuantileThreshold;
-        %[bs_upperQ, bss_upperQ, bsSe_upperQ, bssSE_upperQ] = BrierScore(observedUpperQuantile, dailyProb_all_data);
+        % Brier skill score for upper quantile of observations
 
         % All daily obs
         validEntries_dailyObs = cellfun(@(s) isstruct(s) && isfield(s, 'dailyObs'), allskillOut);
-        dailyObs_all_data = cellfun(@(s) s.dailyObs, allskillOut(validEntries_dailyObs), "UniformOutput", false);        
-
+        dailyObs_all_data = cellfun(@(s) s.dailyObs, allskillOut(validEntries_dailyObs), "UniformOutput", false);
+        dailyObs_all_data = vertcat(dailyObs_all_data{:});
         upperQuantileThreshold = quantile(dailyObs_all_data, 0.8);
         %disp(upperQuantileThreshold)
         observedUpperQuantile = dailyObs_all_data >= upperQuantileThreshold;
