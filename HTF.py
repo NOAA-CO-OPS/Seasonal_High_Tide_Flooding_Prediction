@@ -48,10 +48,13 @@ class HTF_model:
         The type of high tide flood threshold two use. Options are:
             'NWS': The published minor threshold from NWS at the tide gauge, if a gauge
                    id was input for loc. Not available if a lat/lon was input.
+            'NOS': The derived minor threshold from NOS at the tide gauge, 
+                   using the method of Sweet et al. (2018), if a gauge id was input for loc.
+                   Not available if a lat/lon was input.
             'MHHW' or etc.: Use a threshold value relative to MHHW. Can also be any other
                     standard tidal datum, for example MSL, MHW, MLW, MLLW to use
                     a threshold value relative to that datum.
-        The default is 'NWS'
+        The default is 'NOS'
     
     thresh_rel: float or int, optional
         The height (in m) to add to the high tide flood threhsold given by
@@ -126,7 +129,7 @@ class HTF_model:
 
     '''
     def __init__(self,loc,years_fit,years_assess,years_pred,
-                 thresh_type='NWS',thresh_rel=0,
+                 thresh_type='NOS',thresh_rel=0,
                  assess_method='DusekEtAl',assess_metric='htf_days',
                  holdout_num=1,prctile_bin_val='pred_adj'):      
         '''
@@ -151,10 +154,10 @@ class HTF_model:
             raise ValueError('You have provided a list for first argument loc, but the list does not have len()=2. The list needs to be a lat and a lon value in the form [lat,lon].')
 
         # Check that the desired threshold types are valid for the type of location #
-        if self.thresh_type not in ['NWS','MHHW','MHW','MSL','MLW','MLLW']:
-                raise ValueError("The threshold type must be either 'NWS' or a standard tidal datum (e.g. 'MHHW' or 'MSL')")
-        if isinstance(self.loc,list) and self.thresh_type=='NWS':
-                raise ValueError("NWS thresholds are not available for non-tide gauge locations. You can use a standard tidal datum (e.g. 'MHHW') along with thresh_rel to specify a threshold.")
+        if self.thresh_type not in ['NWS','NOS','MHHW','MHW','MSL','MLW','MLLW']:
+                raise ValueError("The threshold type must be either 'NWS', 'NOS', or a standard tidal datum (e.g. 'MHHW' or 'MSL')")
+        if isinstance(self.loc,list) and self.thresh_type in ['NWS','NOS']:
+                raise ValueError("NWS and NOS thresholds are not available for non-tide gauge locations. You can use a standard tidal datum (e.g. 'MHHW') along with thresh_rel to specify a threshold.")
         
         # Check that valid options were provided for the remaining inputs. #
         if self.assess_method not in ['DusekEtAl','xvalid_batch','xvalid_holdout','None']:
@@ -293,8 +296,10 @@ class HTF_model:
             except:
                 raise ValueError('At least one of the requested product names is not valid, or something else went wrong.')
             
-            if thresh_type == 'NWS':
+            if thresh_type == 'NOS':
                 flood_thresh = data_nonapi['Derived Minor'].iloc[0]+thresh_rel
+            elif thresh_type == 'NWS':
+                flood_thresh = data_nonapi['NWS minor (MHHW)'].iloc[0]+thresh_rel                
             else:
                 datums = get_API_data(loc,str(years[0]),str(years[1]),
                                     product='datums').run()['datums']['datums'] # Datums are returned relative to the station datum #
