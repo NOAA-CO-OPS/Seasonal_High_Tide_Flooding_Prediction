@@ -64,16 +64,15 @@ class HTF_model:
         
     assess_method : str, optional
         The model assessment method. Options are:
-            'DusekEtAl': The original method used in Duset et al. (2022).
+            'DusekEtAl': The original method used in Dusek et al. (2022).
                          Fully in-sample, i.e. assess the model on the same
                          data that the model was trained on.
-            'xvalid_batch': Train the model on one set of observations, assess
-                           it on another.
-            'xvalid_holdout': Using some number of years of observations, train
-                             the model using the observations but with holdout_num
-                             years witheld, cycling through all years. The final
-                             skill assessment is then the compilation of all
-                             of the sub-assessments.
+            'out_of_sample': Simple train-test split. Train the model on one set 
+                            of observations, assess it on another.
+            'cross_validation': K-fold cross-validation. Split the training data into
+                                k subsets (folds). Re-train the data on k-1 folds and
+                                evaluate it on the remaining fold, doing this
+                                for all folds and aggregating the results.
             'None': Do not perform an assessment.
         The default is 'DusekEtAl'.
         
@@ -83,10 +82,10 @@ class HTF_model:
             OTHERS CAN BE INSERTED HERE
         The default is 'htf_days'.
         
-    holdout_num : int, optional
-        The number of years to holdout at a time if using the xcorr_houldout 
-        assesment method. Required if using the xcorr_holdout assessment method,
-        ignored otherwise.The deafault is 1 year.
+    fold_size : int, optional
+        The size of the folds (in years) if using the cross_validation
+        assesment method. Required if using the cross_validation assessment method,
+        ignored otherwise. The deafault is 1 year.
         
     prctile_bin_val: str, optional
         The variable to use for the tide percentile binning. Options are:
@@ -120,9 +119,6 @@ class HTF_model:
         Contains the data used to train, non-tidal residuals, computed
         distribution parameters, and computed damped persistence.
     out_assess : dict
-        Contains the freeboard, hourly probability of threshold exceedence,
-        and daily probability of threshold exceedence for the assessment years.
-    out_skill : dict
         Contains skill metrics for the model on the assessment years.
     out_predict : dict
         The same as out_assess but for the prediction years.
@@ -131,7 +127,7 @@ class HTF_model:
     def __init__(self,loc,years_fit,years_assess,years_pred,
                  thresh_type='NOS',thresh_rel=0,
                  assess_method='DusekEtAl',assess_metric='htf_days',
-                 holdout_num=1,prctile_bin_val='pred_adj'):      
+                 fold_size=1,prctile_bin_val='pred_adj',):     
         '''
         Initializes the HTF model and does initial error checking of inputs.
 
@@ -139,12 +135,12 @@ class HTF_model:
         self.loc = loc
         self.years_fit = years_fit
         self.years_assess = years_assess
-        self.years_pred = years_pred 
+        self.years_pred = years_pred   
         self.thresh_type = thresh_type
         self.thresh_rel = thresh_rel
         self.assess_method = assess_method
         self.assess_metric = assess_metric
-        self.holdout_num = holdout_num
+        self.fold_size = fold_size
         self.prctile_bin_val = prctile_bin_val
         
         # Check that either a NWLON or lat/lon were provided correctly #
@@ -160,8 +156,8 @@ class HTF_model:
                 raise ValueError("NWS and NOS thresholds are not available for non-tide gauge locations. You can use a standard tidal datum (e.g. 'MHHW') along with thresh_rel to specify a threshold.")
         
         # Check that valid options were provided for the remaining inputs. #
-        if self.assess_method not in ['DusekEtAl','xvalid_batch','xvalid_holdout','None']:
-                raise ValueError("The assessment method must be one of: 'DusekEtAl', 'xvalid_batch', 'xvalid_holdout', 'None'")
+        if self.assess_method not in ['DusekEtAl','out_of_sample','cross_validation','None']:
+                raise ValueError("The assessment method must be one of: 'DusekEtAl', 'out_of_sample', 'cross_validation', 'None'")
         if self.assess_metric not in ['htf_days']:
                 raise ValueError("The assessment metric must be one of: 'htf_days'")            
         if self.prctile_bin_val not in ['pred','pred_adj']:
@@ -203,28 +199,49 @@ class HTF_model:
         if self.assess_method == 'DusekEtAl':
             # Run the trained model on the same data as it was trained on #
             print('Running the trained model on the same observations...')
-            self.out_assess = self.run(self.out_train['data']['predictions'],
+            out_run = self.run(self.out_train['data']['predictions'],
                                        self.out_train)
             # Do the skill assessment #
             print('Calclating model skill on the same observations...')
-            self.skill = self.calc_skill(self.out_train['data'],
-                                         self.out_assess,
+            self.out_assess = self.calc_skill(self.out_train['data'],
+                                         out_run,
                                          self.assess_metric)
             
         
-        elif self.assess_method == 'xvalid_batch':
+        elif self.assess_method == 'out_of_sample':
             # Get the new out-of-training-sample data for the validation #
             print('Downloading and formatting the new out of sample observations. This can take a while...')
             data = self.pull_data(self.loc,self.years_assess,'lst_ldt',self.thresh_type,self.thresh_rel)           
             # Run the trained model on the new data #
             print('Running the trained model on the new observations...')
-            self.out_assess = self.run(data['predictions'],self.out_train)                                                  
+            out_run = self.run(data['predictions'],self.out_train)                                                  
             # Do the skill assessment #
             print('Calclating model skill on the new observations...')
-            self.skill = self.calc_skill(data,self.out_assess,self.assess_metric)
+            self.out_assess = self.calc_skill(data,out_run,self.assess_metric)
                        
-        elif self.assess_method == 'xvalid_holdout':
-            pass # Translate Karen's Matlab version here #
+        elif self.assess_method == 'cross_validation':
+            # Determine the folds #
+            yrs = self.out_train['data']['hourly_height']['time'].dt.year.unique()
+            set_test = [np.arange(i,i+self.fold_size) for i in np.arange(yrs[0],yrs[-1]+1,self.fold_size)]
+            set_train = [yrs[~np.isin(yrs,i)] for i in set_test]
+            folds = pd.DataFrame({'train':set_train,'test':set_test})
+            # For each fold, re-train on training data and test on testing data #
+            skill_all = []
+            for nfold in range(len(folds)):
+                print('Re-training, re-running, and assessing the model on fold '+str(nfold+1)+' of '+str(len(folds)))
+                i_test = np.isin(self.out_train['data']['hourly_height']['time'].dt.year,folds['test'].iloc[nfold])
+                data_retrain = self.out_train['data'].copy()
+                data_rerun = self.out_train['data'].copy()
+                data_retrain['predictions'] = data_retrain['predictions'][~i_test]
+                data_retrain['hourly_height'] = data_retrain['hourly_height'][~i_test]
+                data_rerun['predictions'] = data_rerun['predictions'][i_test]
+                data_rerun['hourly_height'] = data_rerun['hourly_height'][i_test]
+
+                out_retrain = self.calc_resids_and_dists(data_retrain,bin_val=self.prctile_bin_val)
+                out_rerun = self.run(data_rerun['predictions'],out_retrain)
+                out_reskill = self.calc_skill(data_rerun,out_rerun,self.assess_metric)
+                skill_all.append(out_reskill)
+            self.out_assess = skill_all       
         
         elif self.assess_method == 'None':
                 raise ValueError(r'The assessment method was set to None, so no assessment can be'+
@@ -776,18 +793,19 @@ class ModelEngine():
         '''
         # Convert the epoch center given in fractional years to a datetime
         # object so we can work with it #
-        epoch_center = datetime.datetime(int(np.floor(epoch_center)),
-                                         int(abs(int(epoch_center)-float(epoch_center))*12),
-                                         15)       
+        yr = np.floor(epoch_center)
+        yr_p = epoch_center-yr
+        epoch_center = datetime.datetime(int(yr),1,1)+datetime.timedelta(days=yr_p*365.2425)
+    
         # Change trend to meters #
-        slt = float(slt)/1000
+        slt = round(float(slt)/1000,7)
         
         # Change from epoch center to start date #
-        years_to_mid = (pred['time'].iloc[0]-epoch_center).days/365.2425
+        years_to_mid = (pred['time'].iloc[0]-epoch_center).total_seconds()/(365.2425*24*60*60)
         start_trend = slt*years_to_mid  
         
         # Change over total length of predictions #
-        years_tot = (pred['time'].iloc[-1]-pred['time'].iloc[0]).days/365.2425
+        years_tot = (pred['time'].iloc[-1]-pred['time'].iloc[0]).total_seconds()/(365.2425*24*60*60)
         slt_total = slt*years_tot   
         
         # Compute the value to add at each time #
