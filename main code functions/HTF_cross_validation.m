@@ -150,8 +150,11 @@ end
 % Initialize empty array for output
 %output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
 %                       'bss', 'bssSE', 'recall', 'false_alarm'};
+%output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
+%                       'bss', 'bssSE', 'recall', 'false_alarm', 'bss_upperQ', 'bssSE_upperQ'...
+%                       'recall_upperQ', 'falseAlarm_upperQ'};
 output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
-                       'bss', 'bssSE', 'recall', 'false_alarm', 'bss_upperQ', 'bssSE_upperQ'...
+                       'bss', 'bssSE', 'recall', 'false_alarm', 'rmse', 'bss_upperQ', 'bssSE_upperQ'...
                        'recall_upperQ', 'falseAlarm_upperQ'};
 output_cell_array = [];
 %output_cell_array = cell(n, length(output_columnNames));
@@ -204,7 +207,6 @@ for stn_i = stationIndex
             %disp(rowsToHoldout)
     
             % Create test data from original training dataset
-            %rowsToHoldout = years == yearToHoldout;
             test_data_table_i = training_data_table(rowsToHoldout,:);
             %disp(test_data_table_i(1,:))
         
@@ -280,18 +282,6 @@ for stn_i = stationIndex
         % Brier skill score for all
         [bs_all, bss_all, bsSE_all, bssSE_all] = BrierScore(ynObs_all_data, dailyProb_all_data);
         %disp(bs_all)
-
-        % Brier skill score for upper quantile of observations
-
-        % All daily obs
-        validEntries_dailyObs = cellfun(@(s) isstruct(s) && isfield(s, 'dailyObs'), allskillOut);
-        dailyObs_all_data = cellfun(@(s) s.dailyObs, allskillOut(validEntries_dailyObs), "UniformOutput", false);
-        dailyObs_all_data = vertcat(dailyObs_all_data{:});
-        upperQuantileThreshold = quantile(dailyObs_all_data, 0.8);
-        %disp(upperQuantileThreshold)
-        observedUpperQuantile = dailyObs_all_data >= upperQuantileThreshold;
-        disp(observedUpperQuantile)
-        [bs_upperQ, bss_upperQ, bsSe_upperQ, bssSE_upperQ] = BrierScore(observedUpperQuantile, dailyProb_all_data);
     
         % Sum total floods
         validEntries_floods = cellfun(@(s) isstruct(s) && isfield(s, 'totalYes'), allskillOut);
@@ -304,6 +294,21 @@ for stn_i = stationIndex
         confusion05_all = confusionStats(ynObs_all_data, dailyProb_all_data, 0.05);
         recall_all = confusion05_all.recall;
         falseAlarm_all = confusion05_all.falseAlarm; 
+
+        % Calculate Root Mean Square Error
+        valid_idx = ~isnan(dailyProb_all_data) & ~isnan(ynObs_all_data);
+        rmse_all = sqrt(mean((dailyProb_all_data(valid_idx) - ynObs_all_data(valid_idx)).^2));
+
+        % Brier skill score for upper quantile of observations
+        % All daily obs
+        validEntries_dailyObs = cellfun(@(s) isstruct(s) && isfield(s, 'dailyObs'), allskillOut);
+        dailyObs_all_data = cellfun(@(s) s.dailyObs, allskillOut(validEntries_dailyObs), "UniformOutput", false);
+        dailyObs_all_data = vertcat(dailyObs_all_data{:});
+        upperQuantileThreshold = quantile(dailyObs_all_data, 0.8);
+        %disp(upperQuantileThreshold)
+        observedUpperQuantile = dailyObs_all_data >= upperQuantileThreshold;
+        %disp(observedUpperQuantile)
+        [bs_upperQ, bss_upperQ, bsSe_upperQ, bssSE_upperQ] = BrierScore(observedUpperQuantile, dailyProb_all_data);
 
         %Confusion matrix and stats for the upper quantile
         observedUpperQuantile = double(observedUpperQuantile);
@@ -319,8 +324,11 @@ for stn_i = stationIndex
 
         %output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods_all,skillful_all,bss_all,...
         %               bssSE_all, recall_all, falseAlarm_all};        
+        %output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods_all,skillful_all,bss_all,...
+        %               bssSE_all, recall_all, falseAlarm_all, bss_upperQ, bssSE_upperQ...
+        %               recall_upperQ, falseAlarm_upperQ};
         output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods_all,skillful_all,bss_all,...
-                       bssSE_all, recall_all, falseAlarm_all, bss_upperQ, bssSE_upperQ...
+                       bssSE_all, recall_all, falseAlarm_all, rmse_all, bss_upperQ, bssSE_upperQ...
                        recall_upperQ, falseAlarm_upperQ};
         disp(output_data)
     
@@ -385,6 +393,24 @@ for stn_i = stationIndex
         %Confusion matrix and stats for the 5% warning threshold
         recall = skillOut.recall;
         falseAlarm = skillOut.falseAlarm;
+
+        % Calculate Root Mean Square Error
+        valid_idx = ~isnan(skillOut.dailyProb) & ~isnan(skillOut.ynObs);
+        rmse = sqrt(mean((skillOut.dailyProb(valid_idx) - skillOut.ynObs(valid_idx)).^2));        
+
+        % Brier skill score for upper quantile of observations
+        % Daily obs
+        upperQuantileThreshold = quantile(skillOut.dailyObs, 0.8);
+        disp(upperQuantileThreshold)
+        observedUpperQuantile = skillOut.dailyObs >= upperQuantileThreshold;
+        %disp(observedUpperQuantile)
+        [bs_upperQ, bss_upperQ, bsSe_upperQ, bssSE_upperQ] = BrierScore(observedUpperQuantile, skillOut.dailyProb);
+
+        %Confusion matrix and stats for the upper quantile
+        observedUpperQuantile = double(observedUpperQuantile);
+        confusion05_upperQ = confusionStats(observedUpperQuantile, skillOut.dailyProb, 0.05);
+        recall_upperQ = confusion05_upperQ.recall;
+        falseAlarm_upperQ = confusion05_upperQ.falseAlarm;
         
         if bss >= bssSE
             skillful = 'yes';
@@ -393,9 +419,15 @@ for stn_i = stationIndex
         end    
         %disp(skillful);
     
-        %Define data to output to table        
-        output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods, skillful, bss,...
-                           bssSE, recall, falseAlarm, bss_upperQ, bssSE_upperQ};
+        %Define data to output to table 
+        %output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,bss,...
+        %               bssSE, recall, falseAlarm};  
+        %output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,bss,...
+        %               bssSE, recall, falseAlarm, bss_upperQ, bssSE_upperQ...
+        %               recall_upperQ, falseAlarm_upperQ};
+        output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,bss,...
+                       bssSE, recall, falseAlarm, rmse, bss_upperQ, bssSE_upperQ...
+                       recall_upperQ, falseAlarm_upperQ};
         disp(output_data)
 
     end
