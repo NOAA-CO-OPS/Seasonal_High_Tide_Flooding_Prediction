@@ -1,5 +1,5 @@
 function HTF_cross_validation(stationList, training_startStr, training_endStr, ...
-    months_or_folds, numMonths_or_numFolds, holdOut, random_or_seq, stationIndex)
+    months_or_folds, numMonths_or_numFolds, holdOut, stationIndex)
 
 %Function to conduct cross validation of monthly high tide flooding outlook
 %model.
@@ -54,7 +54,11 @@ if isempty(stationIndex)
 end    
 
 % Convert date formats from input
-training_startdt = datetime(training_startStr, 'InputFormat', 'yyyyMMdd');
+%training_startStr = '19961201';
+training_startdt = datetime(training_startStr, 'InputFormat', 'yyyyMMdd')-calmonths(1);
+%disp(training_startdt)
+training_startStr = char(training_startdt, 'yyyyMMdd');
+%disp(training_startStr)
 training_start_date_time = datetime(year(training_startdt), month(training_startdt),...
     day(training_startdt), 0, 0, 0);
 training_startYear = year(training_startdt);
@@ -72,77 +76,98 @@ training_timeSeries = training_start_date_time:hours(1):training_end_date_time;
 %numDays = length(training_timeSeries); 
 uniqueMonths = unique(month(training_timeSeries) + year(training_timeSeries)*100);
 numMonths = length(uniqueMonths);
-disp(numMonths)
+%disp(numMonths)
 
 % Option 1: Determine the number of folds from the specified number of months
 % in each fold
 if months_or_folds == "months"
     foldSize = numMonths_or_numFolds;
     numFolds = floor(numMonths / foldSize);
-    disp(numFolds)
+    %disp(numFolds)
 
 % Option 2: Calculate the number of days and hours in each fold   
 elseif months_or_folds == "folds"
     numFolds = numMonths_or_numFolds;
     foldSize = floor(numMonths / numFolds);
     %disp(foldSize)
-
 end    
 
 % Separate the time series into folds without splitting months
 folds = cell(1, numFolds);
 
-% Option 1 - Randomly select unique months to hold out
-if random_or_seq == "random"
-    % Karen - this isn't working and completely random doesn't necessarily
-    % make sense if seasonality has some affect. I could specify the months
-    % to always include. However, would non-consecutive data mess up the
-    % training anyway? The code just isn't written this way.
+% % Option 1 - Randomly select unique months to hold out
+% if random_or_seq == "random"
+%     % Karen - this isn't working and completely random doesn't necessarily
+%     % make sense for this assessment. I could specify the months
+%     % to always include. However, would non-consecutive data in the hold out set
+%     % make sense?
+% 
+%     % Randomly partition months into k groups
+%     cv = cvpartition(numMonths, 'KFold', numFolds);
+% 
+%     for i = 1:numFolds
+%         % Get the training and validation months
+%         testIdx = test(cv, i); 
+%         trainIdx = training(cv, i);
+% 
+%         valMonths = uniqueMonths(testIdx);
+%         trainMonths = uniqueMonths(trainIdx);
+% 
+%         foldIndices = ismember(month(training_timeSeries) + year(training_timeSeries)*100, valMonths);
+%         folds{i} = training_timeSeries(foldIndices);
+%         disp(folds{i})
+%     end    
+% 
+% % Option 2 - Select a sequence unique months to hold out
+% elseif random_or_seq == "sequence"
+% 
+%     currentMonthIdx = 1;
+% 
+%     for i = 1:numFolds
+% 
+%         startMonthIdx = currentMonthIdx;
+% 
+%         if i < numFolds
+%             endMonthIdx = startMonthIdx + foldSize - 1;
+%         else
+%             endMonthIdx = numMonths;
+%         end
+% 
+%         selectedMonths = uniqueMonths(startMonthIdx:endMonthIdx);
+% 
+%         foldIndices = ismember(month(training_timeSeries) + year(training_timeSeries)*100, selectedMonths);    
+% 
+%         folds{i} = training_timeSeries(foldIndices);
+%         %disp(folds{i})
+% 
+%         currentMonthIdx = endMonthIdx + 1;        
+% 
+%     end   
+% 
+% end
+
+%Select a sequence unique months to hold out
+currentMonthIdx = 2;
+
+for i = 1:numFolds
+
+    startMonthIdx = currentMonthIdx;
+
+    if i < numFolds
+        endMonthIdx = startMonthIdx + foldSize - 1;
+    else
+        endMonthIdx = numMonths;
+    end
     
-    % Randomly partition months into k groups
-    cv = cvpartition(numMonths, 'KFold', numFolds);
+    selectedMonths = uniqueMonths(startMonthIdx:endMonthIdx);
 
-    for i = 1:numFolds
-        % Get the training and validation months
-        testIdx = test(cv, i); 
-        trainIdx = training(cv, i);
+    foldIndices = ismember(month(training_timeSeries) + year(training_timeSeries)*100, selectedMonths);    
 
-        valMonths = uniqueMonths(testIdx);
-        trainMonths = uniqueMonths(trainIdx);
-
-        foldIndices = ismember(month(training_timeSeries) + year(training_timeSeries)*100, valMonths);
-        folds{i} = training_timeSeries(foldIndices);
-        disp(folds{i})
-    end    
-  
-% Option 2 - Select a sequence unique months to hold out
-elseif random_or_seq == "sequence"
-
-    currentMonthIdx = 1;
+    folds{i} = training_timeSeries(foldIndices);
+    %disp(folds{i})
     
-    for i = 1:numFolds
-    
-        startMonthIdx = currentMonthIdx;
-    
-        if i < numFolds
-            endMonthIdx = startMonthIdx + foldSize - 1;
-        else
-            endMonthIdx = numMonths;
-        end
-        
-        selectedMonths = uniqueMonths(startMonthIdx:endMonthIdx);
-
-        foldIndices = ismember(month(training_timeSeries) + year(training_timeSeries)*100, selectedMonths);    
-    
-        folds{i} = training_timeSeries(foldIndices);
-        %disp(folds{i})
-        
-        currentMonthIdx = endMonthIdx + 1;        
-
-    end   
-
-end
-  
+    currentMonthIdx = endMonthIdx + 1; 
+end    
 
 % Initialize empty array for output
 %output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
@@ -153,7 +178,7 @@ end
 %output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
 %                       'bss', 'bssSE', 'recall', 'false_alarm', 'bss_upperQ', 'bssSE_upperQ'...
 %                       'recall_upperQ', 'falseAlarm_upperQ'};
-output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
+output_columnNames = {'StationID','minorThreshDerived','upper quantile', 'Total Floods', 'skillful'...
                        'bss', 'bssSE', 'recall', 'false_alarm', 'rmse', 'bss_upperQ', 'bssSE_upperQ'...
                        'recall_upperQ', 'falseAlarm_upperQ'};
 output_cell_array = [];
@@ -175,13 +200,14 @@ for stn_i = stationIndex
     %training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
     % Pull data from 1 year before training start date specified to end
     % date specified
-    pre_training_year = datestr(training_startdt - calyears(1), 'yyyymmdd');
-    %training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
-    training_data = HTF_data_pull(stationNumStr, pre_training_year, training_endStr);
+    %pre_training_year = datestr(training_startdt - calyears(1), 'yyyymmdd');
+    training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
+    %training_data = HTF_data_pull(stationNumStr, pre_training_year, training_endStr);
     [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat']);
 
     %Convert structured array to table
     training_data_table = struct2table(training_data);
+    %disp(training_data_table(1,:))
 
     if holdOut == "yes"
         %Iterate through folds and create training datasets that remove 
@@ -196,8 +222,9 @@ for stn_i = stationIndex
             trainFolds(i) = [];
             training_data_folds = [trainFolds{:}];
             
-            % Extract year from datetime
+            % Extract holdout months from datetime
             rowsToKeep = ismember(training_data_table.dateTime, training_data_folds);
+            %disp(training_data_table(1,:))
             
             % Remove rows from data based on logical index
             training_data_table_i = training_data_table(rowsToKeep,:);
@@ -247,7 +274,7 @@ for stn_i = stationIndex
     
             predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
                           testing_startMonth,testing_endMonth,resOut,test_data); 
-    
+
             % copy mat file
             newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(i));
             save(newpred,'-struct','predOut');
@@ -327,14 +354,15 @@ for stn_i = stationIndex
         %output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods_all,skillful_all,bss_all,...
         %               bssSE_all, recall_all, falseAlarm_all, bss_upperQ, bssSE_upperQ...
         %               recall_upperQ, falseAlarm_upperQ};
-        output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods_all,skillful_all,bss_all,...
-                       bssSE_all, recall_all, falseAlarm_all, rmse_all, bss_upperQ, bssSE_upperQ...
+        output_data = {stationNumStr, minorThreshDerived(stn_i), upperQuantileThreshold, total_Floods_all, skillful_all,... 
+                       bss_all, bssSE_all, recall_all, falseAlarm_all, rmse_all, bss_upperQ, bssSE_upperQ...
                        recall_upperQ, falseAlarm_upperQ};
         disp(output_data)
     
     elseif holdOut == "no"        
         % Pull data for dates specified
-        training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
+        %training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
+        training_data = HTF_data_pull(stationNumStr, '19961201', training_endStr);        
         [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat']);
     
         %Convert structured array to table
@@ -401,7 +429,7 @@ for stn_i = stationIndex
         % Brier skill score for upper quantile of observations
         % Daily obs
         upperQuantileThreshold = quantile(skillOut.dailyObs, 0.8);
-        disp(upperQuantileThreshold)
+        %disp(upperQuantileThreshold)
         observedUpperQuantile = skillOut.dailyObs >= upperQuantileThreshold;
         %disp(observedUpperQuantile)
         [bs_upperQ, bss_upperQ, bsSe_upperQ, bssSE_upperQ] = BrierScore(observedUpperQuantile, skillOut.dailyProb);
@@ -425,8 +453,8 @@ for stn_i = stationIndex
         %output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,bss,...
         %               bssSE, recall, falseAlarm, bss_upperQ, bssSE_upperQ...
         %               recall_upperQ, falseAlarm_upperQ};
-        output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,bss,...
-                       bssSE, recall, falseAlarm, rmse, bss_upperQ, bssSE_upperQ...
+        output_data = {stationNumStr, minorThreshDerived(stn_i), upperQuantileThreshold, total_Floods,skillful,...
+                       bss, bssSE, recall, falseAlarm, rmse, bss_upperQ, bssSE_upperQ...
                        recall_upperQ, falseAlarm_upperQ};
         disp(output_data)
 
