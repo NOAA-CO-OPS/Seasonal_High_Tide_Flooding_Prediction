@@ -1,0 +1,6 @@
+[submodule "lib/COlib/CO-OPS-Tidal-Analysis-Datum-Calculator"]
+	path = lib/COlib/CO-OPS-Tidal-Analysis-Datum-Calculator
+	url = https://github.com/NOAA-CO-OPS/CO-OPS-Tidal-Analysis-Datum-Calculator.git
+[submodule "lib/CO-OPS-Tidal-Analysis-Datum-Calculator"]
+	path = lib/CO-OPS-Tidal-Analysis-Datum-Calculator
+	url = https://github.com/NOAA-CO-OPS/CO-OPS-Tidal-Analysis-Datum-Calculator.git

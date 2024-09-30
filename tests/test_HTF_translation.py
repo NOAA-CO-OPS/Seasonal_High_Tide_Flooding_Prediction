@@ -5,7 +5,7 @@ Created on Wed Aug 21 16:12:38 2024
 @author: Matthew.Conlin
 """
 
-from HTF.HTF import HTF_model
+from Seasonal_High_Tide_Flooding_Prediction.HTF import HTF_model
 import numpy as np
 import os
 import pandas as pd
@@ -25,7 +25,8 @@ def run_model_py(station,years_fit,years_pred):
                     assess_method='DusekEtAl',
                     assess_metric='htf_days',
                     fold_size=1,
-                    prctile_bin_val='pred_adj')
+                    prctile_bin_val='pred_adj',
+                    cora_data_dir=None)
     model.train()
     model.assess()
     model.predict()

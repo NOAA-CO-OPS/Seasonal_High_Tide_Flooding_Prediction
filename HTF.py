@@ -8,11 +8,14 @@ Created on Fri Aug 16 10:09:08 2024
 import datetime
 import intake
 import numpy as np
+import os
 import pandas as pd
+import pickle
 import pkg_resources
 import requests
 import scipy
 from sklearn.metrics import confusion_matrix
+import subprocess
 import warnings
 warnings.filterwarnings('ignore')
 import utide
@@ -94,6 +97,10 @@ class HTF_model:
             'pred': Bin non-tidal residuals based on the predicted tide level
                         not adjusted by the sea level trend.
         The default is 'pred_adj'.
+        
+    cora_data_dir: str, optional
+        The directory of saved CORA timeseries and/or computed parameters, if it
+        exists. IN DEVELOPMENT. The default is None.
 
     Methods
     ------
@@ -127,7 +134,8 @@ class HTF_model:
     def __init__(self,loc,years_fit,years_assess,years_pred,
                  thresh_type='NOS',thresh_rel=0,
                  assess_method='DusekEtAl',assess_metric='htf_days',
-                 fold_size=1,prctile_bin_val='pred_adj',):     
+                 fold_size=1,prctile_bin_val='pred_adj',
+                 cora_data_dir=None):     
         '''
         Initializes the HTF model and does initial error checking of inputs.
 
@@ -142,6 +150,7 @@ class HTF_model:
         self.assess_metric = assess_metric
         self.fold_size = fold_size
         self.prctile_bin_val = prctile_bin_val
+        self.cora_data_dir = cora_data_dir
         
         # Check that either a NWLON or lat/lon were provided correctly #
         if not isinstance(self.loc,int) and not isinstance(self.loc,list):
@@ -152,8 +161,8 @@ class HTF_model:
         # Check that the desired threshold types are valid for the type of location #
         if self.thresh_type not in ['NWS','NOS','MHHW','MHW','MSL','MLW','MLLW']:
                 raise ValueError("The threshold type must be either 'NWS', 'NOS', or a standard tidal datum (e.g. 'MHHW' or 'MSL')")
-        if isinstance(self.loc,list) and self.thresh_type in ['NWS','NOS']:
-                raise ValueError("NWS and NOS thresholds are not available for non-tide gauge locations. You can use a standard tidal datum (e.g. 'MHHW') along with thresh_rel to specify a threshold.")
+        if isinstance(self.loc,list) and self.thresh_type=='NWS':
+                raise ValueError("NWS thresholds are not available for non-tide gauge locations. You can use 'NOS' to compute a derived threshold based on GT, or a standard tidal datum (e.g. 'MHHW'), along with thresh_rel to specify a threshold.")
         
         # Check that valid options were provided for the remaining inputs. #
         if self.assess_method not in ['DusekEtAl','out_of_sample','cross_validation','None']:
@@ -175,7 +184,7 @@ class HTF_model:
         After running, model object contains an attribute named out_train
 
         '''
-        data = self.pull_data(self.loc,self.years_fit,'gmt',self.thresh_type,self.thresh_rel)
+        data = self.pull_data(self.loc,self.years_fit,'gmt',self.thresh_type,self.thresh_rel,self.cora_data_dir)
         self.out_train = self.calc_resids_and_dists(data,bin_val=self.prctile_bin_val)
         
         
@@ -211,7 +220,7 @@ class HTF_model:
         elif self.assess_method == 'out_of_sample':
             # Get the new out-of-training-sample data for the validation #
             print('Downloading and formatting the new out of sample observations. This can take a while...')
-            data = self.pull_data(self.loc,self.years_assess,'lst_ldt',self.thresh_type,self.thresh_rel)           
+            data = self.pull_data(self.loc,self.years_assess,'lst_ldt',self.thresh_type,self.thresh_rel,self.cora_data_dir)           
             # Run the trained model on the new data #
             print('Running the trained model on the new observations...')
             out_run = self.run(data['predictions'],self.out_train)                                                  
@@ -266,7 +275,7 @@ class HTF_model:
 
         # Get the predictions for the prediction period #
         print('Getting the tide predictions for the prediction period...')
-        predictions = self.pull_predictions(self.loc,self.out_train,self.years_pred,'lst_ldt')           
+        predictions = self.pull_predictions(self.loc,self.out_train,self.years_pred,'lst_ldt',self.cora_data_dir)           
         
         # Run the trained model on the new data #
         print('Running the trained model with the predictions...')
@@ -274,7 +283,7 @@ class HTF_model:
 
            
     @staticmethod    
-    def pull_data(loc,years,time_zone,thresh_type,thresh_rel):
+    def pull_data(loc,years,time_zone,thresh_type,thresh_rel,cora_data_dir):
         '''
         Function to get and format the observed and predicted hourly water levels for
         the desired time period.
@@ -300,12 +309,12 @@ class HTF_model:
 
         '''
         if isinstance(loc,int):
-            print('Downloading and formatting observations. This can take a while...')
+            print('Downloading and formatting gauge observations. This can take a while...')
             try:
-                data_api = get_API_data(loc, str(years[0]), str(years[1]),
+                data_api = ApiInterface(loc, str(years[0]), str(years[1]),
                                     product=['hourly_height','predictions'],
                                     time_zone=time_zone).run()
-                data_nonapi = get_nonAPI_data(loc)
+                data_nonapi = utils.load_data(loc)
             except KeyError:
                 raise ValueError('The provided gauge ID is not a valid NWLON station number')
             except TypeError:
@@ -318,7 +327,7 @@ class HTF_model:
             elif thresh_type == 'NWS':
                 flood_thresh = data_nonapi['NWS minor (MHHW)'].iloc[0]+thresh_rel                
             else:
-                datums = get_API_data(loc,str(years[0]),str(years[1]),
+                datums = ApiInterface(loc,str(years[0]),str(years[1]),
                                     product='datums').run()['datums']['datums'] # Datums are returned relative to the station datum #
                 z_mhhw = np.array(datums)[np.array([datums[i]['name'] for i in range(len(datums))]) == 'MHHW'][0]['value']
                 thresh1 = np.array(datums)[np.array([datums[i]['name'] for i in range(len(datums))]) == thresh_type][0]['value']
@@ -333,18 +342,20 @@ class HTF_model:
                     'predictions':data_api['predictions']}   
             
         elif isinstance(loc,list):
-            print('Downloading and formatting CORA output. This takes a long time...')
-            hourly_height = CoraEngine.get_hourly_output(loc, 
-                                                         utils.datestr2dt(str(years[0])), 
-                                                         utils.datestr2dt(str(years[1])))
-            print('Calculating tidal constituents and predictions...')
-            predictions = CoraEngine.calc_predictions(hourly_height,loc[0],hourly_height['time'])
-            print('Calculating sea level trend')
+            hourly_height = CoraEngine.get_timeseries(loc, 
+                                                      utils.datestr2dt(str(years[0])), 
+                                                      utils.datestr2dt(str(years[1])),
+                                                      cora_data_dir)
+            datums = CoraEngine.calc_datums(hourly_height,
+                                            loc,
+                                            cora_data_dir)
+            predictions = CoraEngine.calc_predictions(hourly_height,
+                                                      loc,
+                                                      hourly_height['time'],
+                                                      cora_data_dir)
             slt = CoraEngine.calc_slt(hourly_height) 
-            print('Assigning the epoch center as the middle of the dates')
             epoch_center = CoraEngine.calc_epoch_center(years)
-            print('Getting the flood threshold')
-            flood_thresh = CoraEngine.calc_flood_thresh()
+            flood_thresh = CoraEngine.calc_flood_thresh(datums,thresh_type,thresh_rel)
             
             data = {'ID':loc,
                     'Name':'CORA node',
@@ -387,10 +398,10 @@ class HTF_model:
         return out
 
     @staticmethod
-    def pull_predictions(loc,out_train,years,time_zone):
+    def pull_predictions(loc,out_train,years,time_zone,cora_data_dir):
         if isinstance(loc,int):
             print('Downloading predictions for prediction window...')
-            predictions = get_API_data(loc, str(years[0]), str(years[1]),
+            predictions = ApiInterface(loc, str(years[0]), str(years[1]),
                                 product='predictions',
                                 time_zone=time_zone).run()['predictions']                 
         elif isinstance(loc,list):
@@ -399,7 +410,7 @@ class HTF_model:
             dt_end = datetime.datetime(dt_end.year,dt_end.month,dt_end.day,23,0,0)
             time_pred = pd.date_range(dt_start,dt_end,freq='h')
             print('Calculating tidal predictions...')
-            predictions = CoraEngine.calc_predictions(out_train['data']['hourly_height'],loc[0],time_pred)
+            predictions = CoraEngine.calc_predictions(out_train['data']['hourly_height'],loc,time_pred,cora_data_dir)
         return predictions
     
     @staticmethod
@@ -495,277 +506,7 @@ class HTF_model:
           
 
         
-class get_API_data:
-    '''
-    Class to download data from CO-OPS API. Class allows request of 
-    multiple datasets over the same time period.
 
-    Parameters
-    ----------
-    station: INT
-        The NWLONS station ID
-    begin_date: STR
-        The begin date for data retrieval, in the format 'yyyymmdd' (e.g. '20200101')
-    end_date: STR
-        The end date for data retrieval, in the format 'yyyymmdd' (e.g. '20231231')
-    product: STR or list of STR
-        The water level, met, or oceanographic product of interst.
-        The choices are:
-        'water_level' - Prelim or verified water levels
-        'air_temperature' - Air temp as measured
-        'water_temperature' - Water temp as measured
-        'wind' - Wind Speed, direction, and gusts as measured
-        'air_pressure' - Barometric pressure as measured
-        'air_gap' - Air Gap at the station
-        'conductivity' - water conductivity
-        'visibility' - Visibility
-        'humidity' - relative humidity
-        'hourly_height' - Verified hourly height data
-        'high_low' - verified high/low water level data
-        'daily_mean' - verified daily mean water level data
-        'monthly_mean' - Verified monthly mean water level data
-        'one_minute_water_level' - One minute water level data
-        'predictions' - 6 minute predicted water level data
-        'datums' - accepted datums for the station
-        'currents' - Current data for thee current station
-        DEFAULT = 'water_level'
-    units : STR
-        The type of units to use. Either 'english' or 'metric'
-        DEFAULT = 'metric'
-    datum_bias: STR
-        The datum to which to bias the data to. Options are 
-        'MHHW' - mean higher high water
-        'MHW' - mean high water
-        'MTL' - mean tide level
-        'MSL' - mean sea level
-        'MLW' - mean low water
-        'MLLW' - mean lower low water
-        'NAVD' - North American Veritcal Datum of 1988
-        'STND' - station datum
-        DEFAULT = 'MHHW'
-    time_zone: STR
-        The time zone for the data. Options are:
-        'gmt' - Greenwich Mean Time
-        'lst' - local standard time
-        'lst_ldt' - Local Standard or Local daylight, depending on time of year
-         DEFAULT = 'gmt'
-
-    Returns
-    -------
-    None.
-
-    '''
-    def __init__(self,station,begin_date,end_date,product='water_level',units='metric',
-                     datum_bias='MHHW',time_zone='gmt'):
-        self.station = station
-        self.begin_date = begin_date
-        self.end_date = end_date
-        self.product = product
-        self.units = units
-        self.datum_bias = datum_bias
-        self.time_zone = time_zone
-               
-    def download_and_format(self):
-        if not isinstance(self.product, list):
-            self.product = [self.product]
-            
-        data_all = {}
-        for prod in self.product:         
-            # If requesting an hourly or 6-minute product, there is a 30 day max interval for retrieval. 
-            # So need to loop through each month of the interval to download and then
-            # smoosh it all together #
-            cond1 = (prod=='water_level' or prod=='hourly_height' or prod=='predictions')
-            cond2 = utils.datestr2dt(self.end_date)-utils.datestr2dt(self.begin_date)>datetime.timedelta(days=30)
-            if cond1 and cond2:
-                # Get the start and end datetimes #
-                begin_dt = utils.datestr2dt(self.begin_date)
-                end_dt = utils.datestr2dt(self.end_date)
-                # Force the end datetime to be at the end of the requested day #
-                if prod=='water_level':
-                    end_dt = datetime.datetime(end_dt.year,end_dt.month,end_dt.day,23,54)
-                else:
-                    end_dt = datetime.datetime(end_dt.year,end_dt.month,end_dt.day,23,0)
-                # Generate a list of interval datetimes between start and end #
-                datetimes_list = []
-                current_datetime = begin_dt
-                while current_datetime <= end_dt:
-                    datetimes_list.append(current_datetime)
-                    current_datetime += datetime.timedelta(days=30)
-                datetimes_list.append(end_dt)
-                # Download data for each datetime interval and put into a DataFrame #
-                for i in range(len(datetimes_list)-1):                 
-                    begin_dt_interval = datetimes_list[i]
-                    end_dt_interval = datetimes_list[i+1]
-                    url = self.build_url_dapi(str(self.station),utils.dt2datestr(begin_dt_interval),
-                                    utils.dt2datestr(end_dt_interval),product=prod,
-                                    units=self.units,datum_bias=self.datum_bias,
-                                    time_zone=self.time_zone)
-                    content = self.request_data(url)
-                    data1 = self.format_content_dapi(content)
-                    if i==0:
-                        data = data1
-                    else:
-                        data = pd.concat([data,data1],ignore_index=True)
-                data = data.drop_duplicates(subset='time', keep='first')
-                data = self.fill_gaps(data,begin_dt,end_dt)              
-            else:
-                if prod in ['datums','supersededdatums','harcon','sensors','details',
-                                   'notices','disclaimers','benchmarks','tidepredoffsets',
-                                   'floodlevels']:
-                     url = self.build_url_mdapi(str(self.station),
-                                                None,None,product=prod,units=self.units)
-                     content = self.request_data(url)
-                     data = self.format_content_mdapi(content)
-                elif prod in ['sealvltrends']:
-                     url = self.build_url_dpapi(str(self.station),
-                                                None,None,product=prod)
-                     content = self.request_data(url)
-                     data = self.format_content_dpapi(content)
-                else:
-                    url = self.build_url_dapi(str(self.station),self.begin_date,
-                                    self.end_date,product=prod,
-                                    units=self.units,datum_bias=self.datum_bias,
-                                    time_zone=self.time_zone)
-                    content = self.request_data(url)
-                    data = self.format_content_dapi(content)
-                    data = self.fill_gaps(data,utils.datestr2dt(self.begin_date),utils.datestr2dt(self.end_date))
-                     
-            data_all[prod] = data
-            
-        return data_all
-                               
-    def run(self):
-        data = self.download_and_format()
-        return data
-
-
-    @staticmethod
-    def build_url_dapi(station,begin_date,end_date,product='water_level',units='metric',
-                     datum_bias='MHHW',time_zone='gmt'):
-        
-        # CO-OPS API server #
-        server = 'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?'
-        
-        if product=='predictions':
-            url = (server + 'begin_date=' + begin_date +'&end_date=' + end_date +'&station=' + str(station) +
-                 '&product=' + product +'&datum=' + datum_bias + '&time_zone=' + time_zone + '&units=' + 
-                 units + '&format=json' +'&interval=h')
-        else:
-            url = (server + 'begin_date=' + begin_date +'&end_date=' + end_date +'&station=' + str(station) +
-                 '&product=' + product +'&datum=' + datum_bias + '&time_zone=' + time_zone + '&units=' + 
-                 units + '&format=json')
-        
-        return url
-
-    @staticmethod
-    def build_url_mdapi(station,begin_date=None,end_date=None,product='details',units='metric'):
-        
-        # CO-OPS metadata API server #
-        server = 'https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/'
-        
-        url = (server + str(station) + '/'+product+'.json?units='+units)
-    
-        return url  
-    
-    @staticmethod
-    def build_url_dpapi(station,begin_date=None,end_date=None,product='sealvltrends'):
-        
-        # CO-OPS metadata API server #
-        server = 'https://api.tidesandcurrents.noaa.gov/dpapi/prod/webapi/product/'
-        
-        url = (server + product + ".json?station=" + str(station) + "&affil=us")
-    
-        return url   
-    
-    @staticmethod
-    def request_data(url):
-        content = requests.get(url).json()
-        return content
-    
-    @staticmethod 
-    def format_content_dapi(content):
-        if len(content)>1 or list(content.keys())[0]=='predictions': # len=1 indicates no data was found (just an eror message returned) #
-            data_raw = content[list(content.keys())[-1]]
-            data1 = []
-            for val in ['t','v']:
-                data1.append([data_raw[i][val] for i in range(len(data_raw))])
-            data_arr = np.array(data1).T
-            data_dict = {'time':[utils.datestr2dt(data_arr[i,0]) for i in range(len(data_arr))],
-                    'val':[float(data_arr[i,1]) if len(data_arr[i,1])>0 else np.nan for i in range(len(data_arr))] }
-        else:
-            data_dict = {'time':[],
-                    'val':[]}
-                   
-        return pd.DataFrame(data_dict)
-    
-    @staticmethod 
-    def format_content_mdapi(content):
-        data_dict = {}
-        for key in list(content.keys()):
-            data_dict[key] = content[key]
-        return data_dict
-
-    @staticmethod 
-    def format_content_dpapi(content):
-        data_dict = content[list(content.keys())[-1]]
-        return data_dict
-    
-    @staticmethod
-    def fill_gaps(data,begin_date,end_date):
-        def create_fillseries(tstart,tend,dt):
-            fill = pd.date_range(start=tstart, end=tend, freq=dt)
-            fill2 = pd.DataFrame({'time':fill,'val':np.empty(len(fill))*np.nan})
-            return fill2          
-        data = data.reset_index(drop=True)
-        # Get the data time interval #
-        dt = data['time'][1]-data['time'][0] # This assumes there is no missing data between the first two entries #
-        # Find gaps as those where the time between two values is > dt
-        tdif = [data['time'][i+1]-data['time'][i] for i in range(len(data['time'])-1)]
-        jumps = np.where(np.array(tdif)!=dt)[0]
-        # For each gap, create a dummy vector to fill the gap at dt spacing.
-        # Save all of these to insert later #
-        fill_all = []
-        for jump in jumps:
-            t1 = data['time'][jump]
-            t2 = data['time'][jump+1]
-            fill = create_fillseries(t1+dt,t2-dt,dt)
-            fill_all.append(fill)
-        # Insert the dummy fill dfs into the data df. Do this working last-to-first
-        # so we don't have to worry about re-indexing after inserting #
-        for i in np.arange(len(fill_all)-1,-1,-1):
-            insert_index = jumps[i]+1
-            data_before = data.iloc[:insert_index]
-            data_after = data.iloc[insert_index:]
-            data = pd.concat([data_before, fill_all[i], data_after], ignore_index=True)
-        # Now also need to make sure the start and end points requested have data,
-        # if not need to fill to there #
-        tf_start = data['time'].iloc[0]==begin_date
-        tf_end = data['time'].iloc[-1]==end_date
-        if not tf_start:
-            fill = create_fillseries(begin_date,data['time'].iloc[0]-dt,dt)
-            data = pd.concat([fill,data], ignore_index=True)
-        if not tf_end:
-            fill = create_fillseries(data['time'].iloc[-1]+dt,end_date, dt)
-            data = pd.concat([data,fill], ignore_index=True)     
-            
-        return data
- 
-def get_nonAPI_data(station):
-    '''
-    Function to get data for the station that, rather than being available
-    via the CO-OPS API, comes bundled with this package in /data.
-
-    Returns
-    -------
-    dfi : Pandas DataFrame
-        All of the other data for the station, including sea level trend 
-        and flood thresholds.
-
-    '''
-    data_path = pkg_resources.resource_filename(__name__, 'data/HighTideOutlookStationList_05_17_23_PAC_SLT.csv')
-    df = pd.read_csv(data_path)
-    dfi = df[df['St ID']==station].reset_index(drop=True)
-    return dfi
 
 class ModelEngine():    
     @staticmethod
@@ -1220,43 +961,70 @@ class ModelEngine():
 
         return accuracy,precision,recall,false_alarm,F1
 
-class CoraEngine():
+class CoraEngine(HTF_model):
     @staticmethod
-    def get_hourly_output(latlon,dt_start,dt_end):       
-        # Initialize the dataset #
-        catalog = intake.open_catalog("s3://noaa-nos-cora-pds/CORA_intake.yml",storage_options={'anon':True})
-        ds = catalog['CORA-V1-500m-grid-1979-2022'].to_dask()       
-        d = np.array(utils.haversine(ds['lat'],ds['lon'],latlon[0],latlon[1]))
-        # Get the spatial index and time slice indices #
-        i_d = int(np.where(d==min(d))[0])
-        i_t_start = int(np.where(ds['time']==np.datetime64(dt_start))[0])
-        i_t_end = int(np.where(ds['time']==np.datetime64(dt_end))[0])
-        # Slice the data #
-        z = ds['zeta'][i_t_start:i_t_end+1,i_d]
-        t = ds['time'][i_t_start:i_t_end+1]
-        # Load the data into memory #
-        hourly_height = pd.DataFrame({'time':[],
-                            'val':[]})
-        chunk_size = 1000
-        for i in range(0, len(t), chunk_size):
-            tc = t[i:i + chunk_size].compute()
-            zc = z[i:i + chunk_size].compute()
-            df = pd.DataFrame({'time':tc,
-                               'val':zc})
-            hourly_height = pd.concat([hourly_height,df],ignore_index=True)
-            
+    def get_timeseries(latlon,dt_start,dt_end,cora_data_dir): 
+        if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'.pkl'):
+            print('Downloading CORA output. This takes a very long time...')
+            catalog = intake.open_catalog("s3://noaa-nos-cora-pds/CORA_intake.yml",storage_options={'anon':True})
+            ds = catalog['CORA-V1-500m-grid-1979-2022'].to_dask()       
+            d = np.array(utils.haversine(ds['lat'],ds['lon'],latlon[0],latlon[1]))
+            # Get the spatial index and time slice indices #
+            i_d = int(np.where(d==min(d))[0])
+            i_t_start = int(np.where(ds['time']==np.datetime64(dt_start))[0])
+            i_t_end = int(np.where(ds['time']==np.datetime64(dt_end))[0])
+            # Slice the data #
+            z = ds['zeta'][i_t_start:i_t_end+1,i_d]
+            t = ds['time'][i_t_start:i_t_end+1]
+            # Load the data into memory #
+            hourly_height = pd.DataFrame({'time':[],
+                                'val':[]})
+            chunk_size = 1000
+            for i in range(0, len(t), chunk_size):
+                tc = t[i:i + chunk_size].compute()
+                zc = z[i:i + chunk_size].compute()
+                df = pd.DataFrame({'time':tc,
+                                   'val':zc})
+                hourly_height = pd.concat([hourly_height,df],ignore_index=True)
+        else:
+            print('Loading saved CORA timeseries...')
+            f = open(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'.pkl','rb')
+            ts = pickle.load(f)
+            ts = ts[ts['time']>=dt_start]
+            ts = ts[ts['time']<=dt_end]
+            ts = ts.reset_index(drop=True)
+            hourly_height = ts
+                
+        hourly_height = utils.interpolate_ts(hourly_height,dt_start,dt_end)           
         return hourly_height
     
     @staticmethod
-    def calc_predictions(hourly_height,lat,time_recon):
-        coef = utide.solve(hourly_height['time'],hourly_height['val'],lat=lat)
-        predictions = utide.reconstruct(time_recon,coef)
-        predictions = pd.DataFrame({'time':time_recon,
-                                    'val':predictions['h']})
+    def calc_datums(hourly_height,latlon,cora_data_dir):
+        print('Calculating datums with the CO-OPS Tidal Analysis Datum Calculator...')
+        if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'_datums.pkl'):
+            datums_cora = TadcInterface(hourly_height,latlon[0],latlon[1]).run()
+        else:
+            f = open(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'_datums.pkl','rb')
+            datums_cora = pickle.load(f)
+        return datums_cora
+    
+    @staticmethod
+    def calc_predictions(hourly_height,latlon,time_recon,cora_data_dir):
+        print('Calculating tidal constituents and predictions...')
+        if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'_predictions.pkl'):
+            coef = utide.solve(hourly_height['time'],hourly_height['val'],lat=latlon[0])
+            predictions = utide.reconstruct(time_recon,coef)
+            predictions = pd.DataFrame({'time':time_recon,
+                                        'val':predictions['h']})
+        else:
+            f = open(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'_predictions.pkl','rb')
+            predictions = pickle.load(f)           
         return predictions
     
     @staticmethod
     def calc_slt(hourly_height):
+        print('Computing the sea level trend...')
+        hourly_height = hourly_height.dropna()
         t = (hourly_height['time']-hourly_height['time'].iloc[0]).dt.seconds # Relative time in seconds #
         slope,intercept,rvalue,pvalue,stderr = scipy.stats.linregress(t,hourly_height['val'])
         slt = (slope/1000)*60*60*365 # Convert m/s to mm/yr #
@@ -1264,6 +1032,7 @@ class CoraEngine():
     
     @staticmethod
     def calc_epoch_center(years):
+        print('Assigning the epoch center as the middle of the dates')
         y1 = utils.datestr2dt(str(years[0]))
         y2 = utils.datestr2dt(str(years[1]))
         dt = y2-y1
@@ -1272,11 +1041,348 @@ class CoraEngine():
         return epoch_center
     
     @staticmethod
-    def calc_flood_thresh():
-        return np.nan
+    def calc_flood_thresh(datums,thresh_type,thresh_rel):
+        print('Getting the flood threshold')
+        if thresh_type == 'NOS':
+            thresh_mllw = (1.04*float(datums[datums['datum']=='GT']['value']))+0.5
+            conversion = float(datums[datums['datum']=='MHHW']['value']) - float(datums[datums['datum']=='MLLW']['value'])
+            thresh_mhhw = thresh_mllw-conversion
+            thresh1 = thresh_mhhw - float(datums[datums['datum']=='MSL']['value'])
+        else:
+            thresh1 = float(datums[datums['datum']==thresh_type]['value'])
+        thresh = thresh1+thresh_rel
+        return thresh
 
+class ApiInterface:
+    '''
+    Class to download data from CO-OPS API. Class allows request of 
+    multiple datasets over the same time period.
+
+    Parameters
+    ----------
+    station: INT
+        The NWLONS station ID
+    begin_date: STR
+        The begin date for data retrieval, in the format 'yyyymmdd' (e.g. '20200101')
+    end_date: STR
+        The end date for data retrieval, in the format 'yyyymmdd' (e.g. '20231231')
+    product: STR or list of STR
+        The water level, met, or oceanographic product of interst.
+        The choices are:
+        'water_level' - Prelim or verified water levels
+        'air_temperature' - Air temp as measured
+        'water_temperature' - Water temp as measured
+        'wind' - Wind Speed, direction, and gusts as measured
+        'air_pressure' - Barometric pressure as measured
+        'air_gap' - Air Gap at the station
+        'conductivity' - water conductivity
+        'visibility' - Visibility
+        'humidity' - relative humidity
+        'hourly_height' - Verified hourly height data
+        'high_low' - verified high/low water level data
+        'daily_mean' - verified daily mean water level data
+        'monthly_mean' - Verified monthly mean water level data
+        'one_minute_water_level' - One minute water level data
+        'predictions' - 6 minute predicted water level data
+        'datums' - accepted datums for the station
+        'currents' - Current data for thee current station
+        DEFAULT = 'water_level'
+    units : STR
+        The type of units to use. Either 'english' or 'metric'
+        DEFAULT = 'metric'
+    datum_bias: STR
+        The datum to which to bias the data to. Options are 
+        'MHHW' - mean higher high water
+        'MHW' - mean high water
+        'MTL' - mean tide level
+        'MSL' - mean sea level
+        'MLW' - mean low water
+        'MLLW' - mean lower low water
+        'NAVD' - North American Veritcal Datum of 1988
+        'STND' - station datum
+        DEFAULT = 'MHHW'
+    time_zone: STR
+        The time zone for the data. Options are:
+        'gmt' - Greenwich Mean Time
+        'lst' - local standard time
+        'lst_ldt' - Local Standard or Local daylight, depending on time of year
+         DEFAULT = 'gmt'
+
+    Returns
+    -------
+    None.
+
+    '''
+    def __init__(self,station,begin_date,end_date,product='water_level',units='metric',
+                     datum_bias='MHHW',time_zone='gmt'):
+        self.station = station
+        self.begin_date = begin_date
+        self.end_date = end_date
+        self.product = product
+        self.units = units
+        self.datum_bias = datum_bias
+        self.time_zone = time_zone
+               
+    def download_and_format(self):
+        if not isinstance(self.product, list):
+            self.product = [self.product]
+            
+        data_all = {}
+        for prod in self.product:         
+            # If requesting an hourly or 6-minute product, there is a 30 day max interval for retrieval. 
+            # So need to loop through each month of the interval to download and then
+            # smoosh it all together #
+            cond1 = (prod=='water_level' or prod=='hourly_height' or prod=='predictions')
+            cond2 = utils.datestr2dt(self.end_date)-utils.datestr2dt(self.begin_date)>datetime.timedelta(days=30)
+            if cond1 and cond2:
+                # Get the start and end datetimes #
+                begin_dt = utils.datestr2dt(self.begin_date)
+                end_dt = utils.datestr2dt(self.end_date)
+                # Force the end datetime to be at the end of the requested day #
+                if prod=='water_level':
+                    end_dt = datetime.datetime(end_dt.year,end_dt.month,end_dt.day,23,54)
+                else:
+                    end_dt = datetime.datetime(end_dt.year,end_dt.month,end_dt.day,23,0)
+                # Generate a list of interval datetimes between start and end #
+                datetimes_list = []
+                current_datetime = begin_dt
+                while current_datetime <= end_dt:
+                    datetimes_list.append(current_datetime)
+                    current_datetime += datetime.timedelta(days=30)
+                datetimes_list.append(end_dt)
+                # Download data for each datetime interval and put into a DataFrame #
+                for i in range(len(datetimes_list)-1):                 
+                    begin_dt_interval = datetimes_list[i]
+                    end_dt_interval = datetimes_list[i+1]
+                    url = self.build_url_dapi(str(self.station),utils.dt2datestr(begin_dt_interval),
+                                    utils.dt2datestr(end_dt_interval),product=prod,
+                                    units=self.units,datum_bias=self.datum_bias,
+                                    time_zone=self.time_zone)
+                    content = self.request_data(url)
+                    data1 = self.format_content_dapi(content)
+                    if i==0:
+                        data = data1
+                    else:
+                        data = pd.concat([data,data1],ignore_index=True)
+                data = data.drop_duplicates(subset='time', keep='first')
+                data = self.fill_gaps(data,begin_dt,end_dt)              
+            else:
+                if prod in ['datums','supersededdatums','harcon','sensors','details',
+                                   'notices','disclaimers','benchmarks','tidepredoffsets',
+                                   'floodlevels']:
+                     url = self.build_url_mdapi(str(self.station),
+                                                None,None,product=prod,units=self.units)
+                     content = self.request_data(url)
+                     data = self.format_content_mdapi(content)
+                elif prod in ['sealvltrends']:
+                     url = self.build_url_dpapi(str(self.station),
+                                                None,None,product=prod)
+                     content = self.request_data(url)
+                     data = self.format_content_dpapi(content)
+                else:
+                    url = self.build_url_dapi(str(self.station),self.begin_date,
+                                    self.end_date,product=prod,
+                                    units=self.units,datum_bias=self.datum_bias,
+                                    time_zone=self.time_zone)
+                    content = self.request_data(url)
+                    data = self.format_content_dapi(content)
+                    data = self.fill_gaps(data,utils.datestr2dt(self.begin_date),utils.datestr2dt(self.end_date))
+                     
+            data_all[prod] = data
+            
+        return data_all
+                               
+    def run(self):
+        data = self.download_and_format()
+        return data
+
+
+    @staticmethod
+    def build_url_dapi(station,begin_date,end_date,product='water_level',units='metric',
+                     datum_bias='MHHW',time_zone='gmt'):
         
-class utils:
+        # CO-OPS API server #
+        server = 'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?'
+        
+        if product=='predictions':
+            url = (server + 'begin_date=' + begin_date +'&end_date=' + end_date +'&station=' + str(station) +
+                 '&product=' + product +'&datum=' + datum_bias + '&time_zone=' + time_zone + '&units=' + 
+                 units + '&format=json' +'&interval=h')
+        else:
+            url = (server + 'begin_date=' + begin_date +'&end_date=' + end_date +'&station=' + str(station) +
+                 '&product=' + product +'&datum=' + datum_bias + '&time_zone=' + time_zone + '&units=' + 
+                 units + '&format=json')
+        
+        return url
+
+    @staticmethod
+    def build_url_mdapi(station,begin_date=None,end_date=None,product='details',units='metric'):
+        
+        # CO-OPS metadata API server #
+        server = 'https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations/'
+        
+        url = (server + str(station) + '/'+product+'.json?units='+units)
+    
+        return url  
+    
+    @staticmethod
+    def build_url_dpapi(station,begin_date=None,end_date=None,product='sealvltrends'):
+        
+        # CO-OPS metadata API server #
+        server = 'https://api.tidesandcurrents.noaa.gov/dpapi/prod/webapi/product/'
+        
+        url = (server + product + ".json?station=" + str(station) + "&affil=us")
+    
+        return url   
+    
+    @staticmethod
+    def request_data(url):
+        content = requests.get(url).json()
+        return content
+    
+    @staticmethod 
+    def format_content_dapi(content):
+        if len(content)>1 or list(content.keys())[0]=='predictions': # len=1 indicates no data was found (just an eror message returned) #
+            data_raw = content[list(content.keys())[-1]]
+            data1 = []
+            for val in ['t','v']:
+                data1.append([data_raw[i][val] for i in range(len(data_raw))])
+            data_arr = np.array(data1).T
+            data_dict = {'time':[utils.datestr2dt(data_arr[i,0]) for i in range(len(data_arr))],
+                    'val':[float(data_arr[i,1]) if len(data_arr[i,1])>0 else np.nan for i in range(len(data_arr))] }
+        else:
+            data_dict = {'time':[],
+                    'val':[]}
+                   
+        return pd.DataFrame(data_dict)
+    
+    @staticmethod 
+    def format_content_mdapi(content):
+        data_dict = {}
+        for key in list(content.keys()):
+            data_dict[key] = content[key]
+        return data_dict
+
+    @staticmethod 
+    def format_content_dpapi(content):
+        data_dict = content[list(content.keys())[-1]]
+        return data_dict
+    
+    @staticmethod
+    def fill_gaps(data,begin_date,end_date):
+        def create_fillseries(tstart,tend,dt):
+            fill = pd.date_range(start=tstart, end=tend, freq=dt)
+            fill2 = pd.DataFrame({'time':fill,'val':np.empty(len(fill))*np.nan})
+            return fill2          
+        data = data.reset_index(drop=True)
+        # Get the data time interval #
+        dt = data['time'][1]-data['time'][0] # This assumes there is no missing data between the first two entries #
+        # Find gaps as those where the time between two values is > dt
+        tdif = [data['time'][i+1]-data['time'][i] for i in range(len(data['time'])-1)]
+        jumps = np.where(np.array(tdif)!=dt)[0]
+        # For each gap, create a dummy vector to fill the gap at dt spacing.
+        # Save all of these to insert later #
+        fill_all = []
+        for jump in jumps:
+            t1 = data['time'][jump]
+            t2 = data['time'][jump+1]
+            fill = create_fillseries(t1+dt,t2-dt,dt)
+            fill_all.append(fill)
+        # Insert the dummy fill dfs into the data df. Do this working last-to-first
+        # so we don't have to worry about re-indexing after inserting #
+        for i in np.arange(len(fill_all)-1,-1,-1):
+            insert_index = jumps[i]+1
+            data_before = data.iloc[:insert_index]
+            data_after = data.iloc[insert_index:]
+            data = pd.concat([data_before, fill_all[i], data_after], ignore_index=True)
+        # Now also need to make sure the start and end points requested have data,
+        # if not need to fill to there #
+        tf_start = data['time'].iloc[0]==begin_date
+        tf_end = data['time'].iloc[-1]==end_date
+        if not tf_start:
+            fill = create_fillseries(begin_date,data['time'].iloc[0]-dt,dt)
+            data = pd.concat([fill,data], ignore_index=True)
+        if not tf_end:
+            fill = create_fillseries(data['time'].iloc[-1]+dt,end_date, dt)
+            data = pd.concat([data,fill], ignore_index=True)     
+            
+        return data
+
+
+class TadcInterface(): 
+    def __init__(self,ts,lat,lon):
+        self.ts = ts
+        self.lat = lat
+        self.lon = lon
+        self.path = pkg_resources.resource_filename(__name__, 'lib/CO-OPS-Tidal-Analysis-Datum-Calculator/')
+
+    
+    def run(self):
+        self.make_TADC_data(self.ts)
+        self.make_TADC_config()
+        self.run_tadc()
+        datums = self.parse_TADC_out()
+        return datums
+    
+    def make_TADC_data(self,ts):
+        ts.to_csv(self.path+'ts.csv',index=False)
+
+    def make_TADC_config(self):
+        fs = self.path+'config.cfg'
+        with open(fs) as f:
+            lines = f.readlines()
+            lines[22] = 'fname = ts.csv\n'
+            lines[26] = 'control_station =  \n'
+            lines[48] = 'subordinate_lon = '+str(self.lon)+'\n'
+            lines[53] = 'subordinate_lat = '+str(self.lat)+'\n'   
+        with open(fs, 'w') as f:
+            for line in lines:
+                f.write(f'{line}')
+    
+    def run_tadc(self):
+        subprocess.run('cd '+self.path+' && python SDC.py',shell=True,capture_output=True)
+                
+    def parse_TADC_out(self):
+        fs = self.path+'SDC.out' 
+        with open(fs) as f:
+            lines = f.readlines()
+        lstart = [l for l in range(len(lines)) if lines[l][0:3]=='HWL'][0]
+        lend = [l for l in range(len(lines)) if lines[l][0:3]=='LWL'][0]+1
+        lines = lines[lstart:lend]
+        datums = pd.DataFrame({'datum':[],'value':[]})
+        for l in lines:
+            d = l.replace('\n','').split(' ')[0]
+            for i in np.arange(1,len(l.replace('\n','').split(' '))):
+                try:
+                    v = float(l.replace('\n','').split(' ')[i])
+                except:
+                    pass
+                else:
+                    break
+            datums = pd.concat([datums,pd.DataFrame({'datum':[d],'value':[v]})],ignore_index=True)
+        return datums
+    
+
+      
+class utils:   
+    @staticmethod
+    def load_data(station):
+        '''
+        Function to get data for the station that, rather than being available
+        via the CO-OPS API, comes bundled with this package in /data.
+
+        Returns
+        -------
+        dfi : Pandas DataFrame
+            All of the other data for the station, including sea level trend 
+            and flood thresholds.
+
+        '''
+        data_path = pkg_resources.resource_filename(__name__, 'data/HighTideOutlookStationList_05_17_23_PAC_SLT.csv')
+        df = pd.read_csv(data_path)
+        dfi = df[df['St ID']==station].reset_index(drop=True)
+        return dfi
+    
     @staticmethod
     def datestr2dt(datestr):
         if len(datestr)==8:
@@ -1302,8 +1408,8 @@ class utils:
     def dt2decimalyr(dt):
         yr_ref = datetime.datetime(dt.year,1,1)
         time_delta = dt-yr_ref
-        frac1 = time_delta.days/365
-        frac2 = time_delta.seconds/(60*60*24*365)
+        frac1 = time_delta.days/365.2425
+        frac2 = time_delta.seconds/(60*60*24*365.2425)
         frac = frac1+frac2
         decimalyr = dt.year+frac
         return decimalyr
@@ -1320,7 +1426,12 @@ class utils:
         km = R * c
         return km        
 
-            
+    @staticmethod
+    def interpolate_ts(ts,dt_start,dt_end):
+        ti = pd.date_range(dt_start,dt_end-datetime.timedelta(hours=1),freq='h')
+        zi = np.interp(ti,ts['time'],ts['val'])
+        tsi = pd.DataFrame({'time':ti,'val':zi})       
+        return tsi      
         
         
         
