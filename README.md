@@ -51,8 +51,9 @@ model = HTF_model(loc=8665530,
 		thresh_rel=0,
 		assess_method='DusekEtAl',
 		assess_metric='htf_days',
-		holdout_num=None,
-		prctile_bin_val='pred_adj')
+		fold_size=1,
+		prctile_bin_val='pred_adj',
+		cora_data_dir=None)
 model.train()
 model.assess()
 model.predict()
