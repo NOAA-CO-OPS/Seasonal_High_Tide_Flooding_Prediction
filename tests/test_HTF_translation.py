@@ -5,7 +5,7 @@ Created on Wed Aug 21 16:12:38 2024
 @author: Matthew.Conlin
 """
 
-from Seasonal_High_Tide_Flooding_Prediction.HTF import HTF_model
+from HTF.HTF import HTF_model
 import numpy as np
 import os
 import pandas as pd
@@ -28,7 +28,6 @@ def run_model_py(station,years_fit,years_pred):
                     prctile_bin_val='pred_adj',
                     cora_data_dir=None)
     model.train()
-    model.assess()
     model.predict()
     
     return model

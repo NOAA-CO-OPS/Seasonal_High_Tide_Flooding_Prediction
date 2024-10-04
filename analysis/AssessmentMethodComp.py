@@ -5,7 +5,7 @@ Created on Mon Sep  9 14:17:12 2024
 @author: Matthew.Conlin
 """
 
-from junk.HTF_testing_allow_cora_input_allow_thresh_input import HTF_model
+from HTF import HTF_model
 from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
 import numpy as np

@@ -69,7 +69,10 @@ class HTF_model:
         The model assessment method. Options are:
             'DusekEtAl': The original method used in Dusek et al. (2022).
                          Fully in-sample, i.e. assess the model on the same
-                         data that the model was trained on.
+                         data that the model was trained on, but do so at 
+                         different lead times.
+            'in_sample' : Assess the observations on the training data, without
+                         looking at different lead times.
             'out_of_sample': Simple train-test split. Train the model on one set 
                             of observations, assess it on another.
             'cross_validation': K-fold cross-validation. Split the training data into
@@ -165,16 +168,13 @@ class HTF_model:
                 raise ValueError("NWS thresholds are not available for non-tide gauge locations. You can use 'NOS' to compute a derived threshold based on GT, or a standard tidal datum (e.g. 'MHHW'), along with thresh_rel to specify a threshold.")
         
         # Check that valid options were provided for the remaining inputs. #
-        if self.assess_method not in ['DusekEtAl','out_of_sample','cross_validation','None']:
-                raise ValueError("The assessment method must be one of: 'DusekEtAl', 'out_of_sample', 'cross_validation', 'None'")
+        if self.assess_method not in ['DusekEtAl','in_sample','out_of_sample','cross_validation','None']:
+                raise ValueError("The assessment method must be one of: 'DusekEtAl','in_sample', 'out_of_sample', 'cross_validation', 'None'")
         if self.assess_metric not in ['htf_days']:
                 raise ValueError("The assessment metric must be one of: 'htf_days'")            
         if self.prctile_bin_val not in ['pred','pred_adj']:
-                raise ValueError("Thepercentile bin value must be one of: 'pred','pred_adj'")
-        if self.assess_method == 'xvalid_batch' or self.assess_method == 'xvalid_holdout':
-            if utils.datestr2dt(str(self.years_assess[0]))-utils.datestr2dt(str(self.years_fit[-1]))>datetime.timedelta(days=1):
-                raise ValueError('The first assessment year should be the year immedietly following the last training year')
-                
+                raise ValueError("The percentile bin value must be one of: 'pred','pred_adj'")
+
     def train(self):
         '''
         Function to train the model.
@@ -205,18 +205,67 @@ class HTF_model:
 
         print('Assessing the model using the '+self.assess_method+' method...')
 
-        if self.assess_method == 'DusekEtAl':
+        if self.assess_method == 'DusekEtAl':            
+            yrmos = self.out_train['data']['predictions']['time'].dt.to_period('M').unique()  
+            prob_daily_all = [np.nan]                     
+            for yrmo in yrmos[1:len(yrmos)]:
+                print('Generating prediction starting in '+str(yrmo))
+                pred = self.out_train['data']['predictions'][self.out_train['data']['predictions']['time'].dt.to_period('M')>=yrmo]
+                pred = pred[pred['time'].dt.to_period('M')<yrmo+12]
+                out_run = self.run(pred,self.out_train)
+                prob_daily_all.append(out_run['prob_daily'])
+            print('Computing observed flood days...')   
+            observed_floods = ModelEngine.calc_observed_floods(self.out_train['data'])
+            print('Determining predicted flood days as a function of forecast lead time...')
+            yrmods = self.out_train['data']['predictions']['time'].dt.to_period('D').unique()
+            prob_daily_all_lead = np.zeros([12,len(yrmods)])*np.nan
+            for yrmod in yrmods:               
+                # Find the year-long predictions that contain this date #
+                iin = [i for i in range(1,len(prob_daily_all)) if yrmod.to_timestamp() in prob_daily_all[i]['time'].values]
+                # Store the prob value for each prediction on this date ordered
+                # by lead time #
+                for i in iin:
+                    p_want = yrmod.to_timestamp().to_period('M')
+                    p_avail = prob_daily_all[i]['time'].dt.to_period('M').unique()
+                    i_lead = np.where(p_avail==p_want)[0][0]
+                    prob_daily_all_lead[i_lead,np.where(yrmods==yrmod)[0][0]] = prob_daily_all[i][prob_daily_all[i]['time']==yrmod.to_timestamp()]['val'].values[0]
+            print('Calculating skill as a function of lead time...') 
+            out_assess_all_lead = pd.DataFrame({'lead':[],'out_assess':[]})
+            for lead in np.arange(0,12):
+                out_run = {'prob_daily':pd.DataFrame({'time':observed_floods['time'],'val':prob_daily_all_lead[lead,:]})}
+                out_assess = self.calc_skill(self.out_train['data'],
+                                             out_run,
+                                             self.assess_metric)
+                out_assess_all_lead = pd.concat([out_assess_all_lead,pd.DataFrame({'lead':[lead+1],'out_assess':[out_assess]})])
+            print('Calculating skill for last 5 and 10 years at 1 month lead time...')    
+            out_assess_5and10 = []
+            for nyr in [5,10]:
+                t_start = observed_floods['time'].iloc[-1]-datetime.timedelta(days=365.2425*nyr)            
+                out_train_sub = self.out_train['data'].copy()
+                for k in ['hourly_height','predictions']:
+                    out_train_sub[k] = out_train_sub[k][out_train_sub[k]['time']>=datetime.datetime(t_start.year,t_start.month,t_start.day)+datetime.timedelta(days=1)].reset_index(drop=True)
+                
+                b_keep = observed_floods['time']>=t_start
+                out_run = {'prob_daily':pd.DataFrame({'time':observed_floods['time'][b_keep].reset_index(drop=True),'val':prob_daily_all_lead[0,:][b_keep]})}
+        
+                out_assess = self.calc_skill(out_train_sub,
+                                             out_run,
+                                             self.assess_metric)
+                out_assess_5and10.append(out_assess)
+                
+            self.out_assess = {'f(lead)':out_assess_all_lead,'5 and 10 yr':out_assess_5and10}
+        
+        elif self.assess_method == 'in_sample':
             # Run the trained model on the same data as it was trained on #
             print('Running the trained model on the same observations...')
             out_run = self.run(self.out_train['data']['predictions'],
-                                       self.out_train)
+                               self.out_train)
             # Do the skill assessment #
             print('Calclating model skill on the same observations...')
             self.out_assess = self.calc_skill(self.out_train['data'],
                                          out_run,
                                          self.assess_metric)
             
-        
         elif self.assess_method == 'out_of_sample':
             # Get the new out-of-training-sample data for the validation #
             print('Downloading and formatting the new out of sample observations. This can take a while...')
@@ -235,8 +284,11 @@ class HTF_model:
             set_train = [yrs[~np.isin(yrs,i)] for i in set_test]
             folds = pd.DataFrame({'train':set_train,'test':set_test})
             # For each fold, re-train on training data and test on testing data #
-            skill_all = []
-            for nfold in range(len(folds)):
+            obs_all = self.out_train['data'].copy()
+            obs_all['predictions'] = obs_all['predictions'].drop(obs_all['predictions'].index)
+            obs_all['hourly_height'] = obs_all['hourly_height'].drop(obs_all['hourly_height'].index)         
+            pred_all = pd.DataFrame({'time':[],'val':[]})
+            for nfold in np.arange(1,len(folds)):
                 print('Re-training, re-running, and assessing the model on fold '+str(nfold+1)+' of '+str(len(folds)))
                 i_test = np.isin(self.out_train['data']['hourly_height']['time'].dt.year,folds['test'].iloc[nfold])
                 data_retrain = self.out_train['data'].copy()
@@ -248,9 +300,13 @@ class HTF_model:
 
                 out_retrain = self.calc_resids_and_dists(data_retrain,bin_val=self.prctile_bin_val)
                 out_rerun = self.run(data_rerun['predictions'],out_retrain)
-                out_reskill = self.calc_skill(data_rerun,out_rerun,self.assess_metric)
-                skill_all.append(out_reskill)
-            self.out_assess = skill_all       
+                
+                obs_all['predictions'] = pd.concat([obs_all['predictions'],data_rerun['predictions']],ignore_index=True)
+                obs_all['hourly_height'] = pd.concat([obs_all['hourly_height'],data_rerun['hourly_height']],ignore_index=True)
+                pred_all = pd.concat([pred_all,out_rerun['prob_daily']],ignore_index=True)
+                              
+            pred_all = {'prob_daily':pred_all}
+            self.out_assess = self.calc_skill(obs_all,pred_all,self.assess_metric)
         
         elif self.assess_method == 'None':
                 raise ValueError(r'The assessment method was set to None, so no assessment can be'+
