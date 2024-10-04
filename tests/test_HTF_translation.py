@@ -5,7 +5,7 @@ Created on Wed Aug 21 16:12:38 2024
 @author: Matthew.Conlin
 """
 
-from HTF.HTF import HTF_model
+from Seasonal_High_Tide_Flooding_Prediction.HTF import HTF_model
 import numpy as np
 import os
 import pandas as pd
