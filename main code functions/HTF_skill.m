@@ -42,12 +42,11 @@ skillOut.leadTime=NaN(366,240);
 % Need to skip the first time
 %step since we don't have observations the month before, so filling the
 %dateTime values for comparing with obs later
-%check if there is a leap year
-if mod(year(resOut.yrMoTime(1)),4) == 0 && (mod(year(resOut.yrMoTime(1)),100) ~= 0 || mod(year(resOut.yrMoTime(1)),400) == 0)
-    skillOut.dateTime(:,1)=resOut.yrMoTime(1):day(1):resOut.yrMoTime(1)+calmonths(12);
-else
-    skillOut.dateTime(:,1)=resOut.yrMoTime(1):day(1):resOut.yrMoTime(1)+calmonths(12)-day(1);
-end    
+yr1 = resOut.dateTime(year(resOut.dateTime)==year(resOut.dateTime(1)));
+[~,iu] = unique(datestr(yr1,'dd-mmm-yyyy'),'rows','stable');
+yr1_yrMoTime = yr1(iu);
+skillOut.dateTime(1:length(yr1_yrMoTime),1) = yr1_yrMoTime;
+ 
 
 % original skillOut.dateTime(:,1)=resOut.yrMoTime(1):day(1):resOut.yrMoTime(1)+calmonths(12)-day(1);
 
