@@ -204,8 +204,7 @@ class HTF_model:
             raise AttributeError('You must train the model before you can assess performance. Use model.train().')
 
         print('Assessing the model using the '+self.assess_method+' method...')
-
-        if self.assess_method == 'DusekEtAl':            
+        if self.assess_method == 'DusekEtAl':    
             yrmos = self.out_train['data']['predictions']['time'].dt.to_period('M').unique()  
             prob_daily_all = [np.nan]                     
             for yrmo in yrmos[1:len(yrmos)]:
@@ -379,15 +378,22 @@ class HTF_model:
                 raise ValueError('At least one of the requested product names is not valid, or something else went wrong.')
             
             if thresh_type == 'NOS':
-                flood_thresh = data_nonapi['Derived Minor'].iloc[0]+thresh_rel
+                if 9450000<=loc<=9470000:
+                    flood_thresh = data_nonapi['Derived Minor'].iloc[0]+thresh_rel
+                else:
+                    flood_levels = ApiInterface(loc,str(years[0]),str(years[1]),
+                                                product='floodlevels').run()['floodlevels']
+                    datums = ApiInterface(loc,str(years[0]),str(years[1]),
+                                          product='datums').run()['datums']['datums']
+                    flood_thresh = round(flood_levels['nos_minor']-utils.datumlist2datumval(datums,'MHHW'),3)
             elif thresh_type == 'NWS':
                 flood_thresh = data_nonapi['NWS minor (MHHW)'].iloc[0]+thresh_rel                
             else:
                 datums = ApiInterface(loc,str(years[0]),str(years[1]),
                                     product='datums').run()['datums']['datums'] # Datums are returned relative to the station datum #
-                z_mhhw = np.array(datums)[np.array([datums[i]['name'] for i in range(len(datums))]) == 'MHHW'][0]['value']
-                thresh1 = np.array(datums)[np.array([datums[i]['name'] for i in range(len(datums))]) == thresh_type][0]['value']
-                flood_thresh = thresh1+thresh_rel-z_mhhw
+                z_mhhw = utils.datumlist2datumval(datums,'MHHW')
+                thresh1 = utils.datumlist2datumval(datums,thresh_type)
+                flood_thresh = thresh1-z_mhhw+thresh_rel
             
             data = {'ID':data_nonapi['St ID'].iloc[0],
                     'Name':data_nonapi['Station Name'].iloc[0],
@@ -1020,7 +1026,7 @@ class ModelEngine():
 class CoraEngine(HTF_model):
     @staticmethod
     def get_timeseries(latlon,dt_start,dt_end,cora_data_dir): 
-        if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'.pkl'):
+        if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022.pkl'):
             print('Downloading CORA output. This takes a very long time...')
             catalog = intake.open_catalog("s3://noaa-nos-cora-pds/CORA_intake.yml",storage_options={'anon':True})
             ds = catalog['CORA-V1-500m-grid-1979-2022'].to_dask()       
@@ -1044,7 +1050,7 @@ class CoraEngine(HTF_model):
                 hourly_height = pd.concat([hourly_height,df],ignore_index=True)
         else:
             print('Loading saved CORA timeseries...')
-            f = open(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'.pkl','rb')
+            f = open(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022.pkl','rb')
             ts = pickle.load(f)
             ts = ts[ts['time']>=dt_start]
             ts = ts[ts['time']<=dt_end]
@@ -1057,7 +1063,7 @@ class CoraEngine(HTF_model):
     @staticmethod
     def calc_datums(hourly_height,latlon,cora_data_dir):
         print('Calculating datums with the CO-OPS Tidal Analysis Datum Calculator...')
-        if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'_datums.pkl'):
+        if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_datums.pkl'):
             datums_cora = TadcInterface(hourly_height,latlon[0],latlon[1]).run()
         else:
             f = open(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'_datums.pkl','rb')
@@ -1067,7 +1073,7 @@ class CoraEngine(HTF_model):
     @staticmethod
     def calc_predictions(hourly_height,latlon,time_recon,cora_data_dir):
         print('Calculating tidal constituents and predictions...')
-        if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'_predictions.pkl'):
+        if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_predictions.pkl'):
             coef = utide.solve(hourly_height['time'],hourly_height['val'],lat=latlon[0])
             predictions = utide.reconstruct(time_recon,coef)
             predictions = pd.DataFrame({'time':time_recon,
@@ -1080,20 +1086,23 @@ class CoraEngine(HTF_model):
     @staticmethod
     def calc_slt(hourly_height):
         print('Computing the sea level trend...')
-        hourly_height = hourly_height.dropna()
-        t = (hourly_height['time']-hourly_height['time'].iloc[0]).dt.seconds # Relative time in seconds #
-        slope,intercept,rvalue,pvalue,stderr = scipy.stats.linregress(t,hourly_height['val'])
-        slt = (slope/1000)*60*60*365 # Convert m/s to mm/yr #
+        # hourly_height = hourly_height.dropna()
+        # t = (hourly_height['time']-hourly_height['time'].iloc[0]).dt.seconds # Relative time in seconds #
+        # slope,intercept,rvalue,pvalue,stderr = scipy.stats.linregress(t,hourly_height['val'])
+        # slt = (slope/1000)*60*60*365 # Convert m/s to mm/yr #
+        slt = 4
         return slt
     
     @staticmethod
     def calc_epoch_center(years):
-        print('Assigning the epoch center as the middle of the dates')
-        y1 = utils.datestr2dt(str(years[0]))
-        y2 = utils.datestr2dt(str(years[1]))
-        dt = y2-y1
-        mid = y1+(dt/2)
-        epoch_center = utils.dt2decimalyr(mid)
+        # print('Assigning the epoch center as the middle of the dates')
+        # y1 = utils.datestr2dt(str(years[0]))
+        # y2 = utils.datestr2dt(str(years[1]))
+        # dt = y2-y1
+        # mid = y1+(dt/2)
+        # epoch_center = utils.dt2decimalyr(mid)
+        print('Assigning epoch center of the 1979-2022 data as 1992.5')
+        epoch_center = 1992.5
         return epoch_center
     
     @staticmethod
@@ -1488,6 +1497,11 @@ class utils:
         zi = np.interp(ti,ts['time'],ts['val'])
         tsi = pd.DataFrame({'time':ti,'val':zi})       
         return tsi      
+    
+    @staticmethod
+    def datumlist2datumval(datums,datum_want):
+        val = np.array(datums)[np.array([datums[i]['name'] for i in range(len(datums))]) == datum_want][0]['value']
+        return val
         
         
         

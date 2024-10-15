@@ -18,7 +18,7 @@ import subprocess
 def run_model_py(station,years_fit,years_pred):
     model = HTF_model(loc=station,
                     years_fit=years_fit,
-                    years_assess=None,
+                    years_assess=years_fit,
                     years_pred=years_pred,
                     thresh_type='NOS',
                     thresh_rel=0,
@@ -29,6 +29,7 @@ def run_model_py(station,years_fit,years_pred):
                     cora_data_dir=None)
     model.train()
     model.predict()
+    # model.assess()
     
     return model
     
@@ -54,8 +55,10 @@ def run_model_mat(station,years_fit,years_pred):
     # Load in the model output #
     res = loadmat(str(station)+'_res.mat',simplify_cells=True)['resOut']
     pred = loadmat(str(station)+'_pred.mat',simplify_cells=True)['predOut']
+    # skill = loadmat(str(station)+'_skill.mat',simplify_cells=True)['skillOut']
     model = {'res':res,
-              'pred':pred}
+              'pred':pred}#,
+              #'skill':skill}
     
     # Clean up by removing the master branch and created files #
     remove_master_branch()
@@ -63,8 +66,13 @@ def run_model_mat(station,years_fit,years_pred):
     os.remove(str(station)+'_res.mat')
     os.remove(str(station)+'_pred.mat')
     os.remove(str(station)+'_data.mat')
-    os.remove(str(station)+'_HTFpred_'+str(years_pred[0])[0:6]+'_'+str(years_pred[1])[0:6]+'.csv')
-      
+    try:
+        os.remove(str(station)+'_skill.mat')    
+        os.remove('HTFtable_12mo.mat')    
+        os.remove('HTF_skillsummary_12mo_'+str(years_fit[0])+'_'+str(years_fit[1])+'.csv')
+    except:
+        pass
+    os.remove(str(station)+'_HTFpred_'+str(years_pred[0])[0:6]+'_'+str(years_pred[1])[0:6]+'.csv')      
     return model
 
 def pull_master_branch():
@@ -78,12 +86,14 @@ def remove_master_branch():
             os.chmod(file_path, stat.S_IWRITE)
     shutil.rmtree('temp_master-branch')
 
-def test_Charleston_1983_2001():
-    print('Comparing the Python and Matlab models at the Charleston tide gauge for 1983-2001. This takes a few minutes...')    
+def test_Charleston():
+    print('Comparing the Python and Matlab models at the Charleston tide gauge for an example date range. This takes a few minutes...')    
     if os.path.isdir('temp_master-branch'):
         remove_master_branch()
     
     station = 8665530
+    # years_fit = [20041001,20240930]
+    # years_pred = [20241001,20250930]
     years_fit = [19830101,20011231]
     years_pred = [20020101,20021231]
     
@@ -130,18 +140,18 @@ def test_Charleston_1983_2001():
 
     # Compare monthly mu and sigma averages and anomolies #
     print('Comparing monthly mu and sigma and anomalies...')
-    monthly_mu_py = model_py.out_train['dists_time']['monthly_mu']
-    monthly_mu_mat = model_mat['res']['mu_month']
-    monthly_sigma_py = model_py.out_train['dists_time']['monthly_sigma']
-    monthly_sigma_mat = model_mat['res']['sigma_month']
-    monthly_anom_mu_py = model_py.out_train['dists_time']['anom_mu']
-    monthly_anom_mu_mat = model_mat['res']['mu_monthAmly']  
-    monthly_anom_sigma_py = model_py.out_train['dists_time']['anom_sigma']
-    monthly_anom_sigma_mat = model_mat['res']['sigma_monthAmly']  
-    assert ((monthly_mu_py['val']-monthly_mu_mat).dropna().abs() < 0.01).all() , 'Monthly mu averages from Python version are at least once more than 1 cm different than Matlab version'
-    assert ((monthly_sigma_py['val']-monthly_sigma_mat).dropna().abs() < 0.01).all() , 'Monthly sigma averages from Python version are at least once more than 1 cm different than Matlab version'
-    assert ((monthly_anom_mu_py['val']-monthly_anom_mu_mat).dropna().abs() < 0.01).all() , 'Monthly mu anomalies from Python version are at least once more than 1 cm different than Matlab version'
-    assert ((monthly_anom_sigma_py['val']-monthly_anom_sigma_mat).dropna().abs() < 0.01).all() , 'Monthly sigma anomalies from Python version are at least once more than 1 cm different than Matlab version'
+    monthly_mu_py = model_py.out_train['dists_time']['monthly_mu'].dropna()
+    monthly_mu_mat = model_mat['res']['mu_month'][~np.isnan( model_mat['res']['mu_month'])]
+    monthly_sigma_py = model_py.out_train['dists_time']['monthly_sigma'].dropna()
+    monthly_sigma_mat = model_mat['res']['sigma_month'][~np.isnan(model_mat['res']['sigma_month'])]
+    monthly_anom_mu_py = model_py.out_train['dists_time']['anom_mu'].dropna()
+    monthly_anom_mu_mat = model_mat['res']['mu_monthAmly'][~np.isnan(model_mat['res']['mu_monthAmly'])]
+    monthly_anom_sigma_py = model_py.out_train['dists_time']['anom_sigma'].dropna()
+    monthly_anom_sigma_mat = model_mat['res']['sigma_monthAmly'][~np.isnan(model_mat['res']['sigma_monthAmly'])]
+    assert ((monthly_mu_py['val']-monthly_mu_mat).abs() < 0.01).all() , 'Monthly mu averages from Python version are at least once more than 1 cm different than Matlab version'
+    assert ((monthly_sigma_py['val']-monthly_sigma_mat).abs() < 0.01).all() , 'Monthly sigma averages from Python version are at least once more than 1 cm different than Matlab version'
+    assert ((monthly_anom_mu_py['val']-monthly_anom_mu_mat).abs() < 0.01).all() , 'Monthly mu anomalies from Python version are at least once more than 1 cm different than Matlab version'
+    assert ((monthly_anom_sigma_py['val']-monthly_anom_sigma_mat).abs() < 0.01).all() , 'Monthly sigma anomalies from Python version are at least once more than 1 cm different than Matlab version'
     print('Good!')
 
     # Compare damped persistence #
@@ -172,7 +182,35 @@ def test_Charleston_1983_2001():
     assert ((prob_daily_py['val']-prob_daily_mat).dropna().abs() < 0.01).all() , 'Daily probabilities from Python version are at least once more than 1% different than Matlab version'
     print('Good!')
     
-    
+    # Compare the skill metrics #
+    # print('Comparing skill metrics...')
+    # bs_py = []
+    # bs_se_py = []
+    # bss_py = []
+    # bss_se_py = []
+    # recall_py = []
+    # false_alarm_py = []
+    # for i in range(len( model_py.out_assess['f(lead)'])):
+    #     lead = model_py.out_assess['f(lead)'].iloc[i]['out_assess']
+    #     for k in ['bs','bs_se','bss','bss_se','recall']:
+    #         eval(k+'_py').append(lead[k])
+    #     false_alarm_py.append(lead['false alarm'])
+        
+    # bs_mat = model_mat['skill']['bs']
+    # bs_se_mat = model_mat['skill']['bsSE']
+    # bss_mat = model_mat['skill']['bss']
+    # bss_se_mat = model_mat['skill']['bssSE']
+    # recall_mat = model_mat['skill']['recall']
+    # false_alarm_mat = model_mat['skill']['falseAlarm']    
+    # assert (np.abs(bs_py-bs_mat)<0.01).all() , 'BS as a function of lead time are for at least one lead time more than 0.01 different.'
+    # assert (np.abs(bss_py-bss_mat)<0.01).all() , 'BSS as a function of lead time are for at least one lead time more than 0.01 different.'
+    # assert (np.abs(bs_se_py-bs_se_mat)<0.01).all() , 'BS SE as a function of lead time are for at least one lead time more than 0.01 different.'
+    # assert (np.abs(bss_se_py-bss_se_mat)<0.01).all() , 'BSS SE as a function of lead time are for at least one lead time more than 0.01 different.'
+    # assert (np.abs(recall_py-recall_mat)<0.01).all() , 'Recall as a function of lead time are for at least one lead time more than 0.01 different.'
+    # assert (np.abs(false_alarm_py-false_alarm_mat)<0.01).all() , 'False alarm rate as a function of lead time are for at least one lead time more than 0.01 different.'
+    # print('Good!')
+
+
     
     
     
