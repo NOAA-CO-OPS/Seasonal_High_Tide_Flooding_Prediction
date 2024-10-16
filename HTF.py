@@ -204,7 +204,7 @@ class HTF_model:
             raise AttributeError('You must train the model before you can assess performance. Use model.train().')
 
         print('Assessing the model using the '+self.assess_method+' method...')
-        if self.assess_method == 'DusekEtAl':    
+        if self.assess_method == 'DusekEtAl':  
             yrmos = self.out_train['data']['predictions']['time'].dt.to_period('M').unique()  
             prob_daily_all = [np.nan]                     
             for yrmo in yrmos[1:len(yrmos)]:
@@ -918,7 +918,7 @@ class ModelEngine():
         for d in yrmodays.unique():
             iThisDay = yrmodays==d
             freeboard_day = data['Flood thresh'] - data['hourly_height']['val'][iThisDay]
-            if np.nanmin(freeboard_day)<0:
+            if np.nanmin(freeboard_day)<=0:
                 yn.append(1)
             else:
                 yn.append(0)

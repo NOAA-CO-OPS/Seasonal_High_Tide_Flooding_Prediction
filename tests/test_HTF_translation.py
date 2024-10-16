@@ -29,11 +29,9 @@ def run_model_py(station,years_fit,years_pred):
                     cora_data_dir=None)
     model.train()
     model.predict()
-    # model.assess()
-    
+    model.assess()    
     return model
     
-
 def run_model_mat(station,years_fit,years_pred):   
     pull_master_branch()
 
@@ -55,10 +53,10 @@ def run_model_mat(station,years_fit,years_pred):
     # Load in the model output #
     res = loadmat(str(station)+'_res.mat',simplify_cells=True)['resOut']
     pred = loadmat(str(station)+'_pred.mat',simplify_cells=True)['predOut']
-    # skill = loadmat(str(station)+'_skill.mat',simplify_cells=True)['skillOut']
+    skill = loadmat(str(station)+'_skill.mat',simplify_cells=True)['skillOut']
     model = {'res':res,
-              'pred':pred}#,
-              #'skill':skill}
+              'pred':pred,
+              'skill':skill}
     
     # Clean up by removing the master branch and created files #
     remove_master_branch()
@@ -92,10 +90,10 @@ def test_Charleston():
         remove_master_branch()
     
     station = 8665530
-    # years_fit = [20041001,20240930]
-    # years_pred = [20241001,20250930]
-    years_fit = [19830101,20011231]
-    years_pred = [20020101,20021231]
+    years_fit = [20041001,20240930]
+    years_pred = [20241001,20250930]
+    # years_fit = [19830101,20011231]
+    # years_pred = [20020101,20021231]
     
     print('Running the Python version...')    
     model_py = run_model_py(station,years_fit,years_pred)
@@ -183,32 +181,32 @@ def test_Charleston():
     print('Good!')
     
     # Compare the skill metrics #
-    # print('Comparing skill metrics...')
-    # bs_py = []
-    # bs_se_py = []
-    # bss_py = []
-    # bss_se_py = []
-    # recall_py = []
-    # false_alarm_py = []
-    # for i in range(len( model_py.out_assess['f(lead)'])):
-    #     lead = model_py.out_assess['f(lead)'].iloc[i]['out_assess']
-    #     for k in ['bs','bs_se','bss','bss_se','recall']:
-    #         eval(k+'_py').append(lead[k])
-    #     false_alarm_py.append(lead['false alarm'])
+    print('Comparing skill metrics...')
+    bs_py = []
+    bs_se_py = []
+    bss_py = []
+    bss_se_py = []
+    recall_py = []
+    false_alarm_py = []
+    for i in range(len( model_py.out_assess['f(lead)'])):
+        lead = model_py.out_assess['f(lead)'].iloc[i]['out_assess']
+        for k in ['bs','bs_se','bss','bss_se','recall']:
+            eval(k+'_py').append(lead[k])
+        false_alarm_py.append(lead['false alarm'])
         
-    # bs_mat = model_mat['skill']['bs']
-    # bs_se_mat = model_mat['skill']['bsSE']
-    # bss_mat = model_mat['skill']['bss']
-    # bss_se_mat = model_mat['skill']['bssSE']
-    # recall_mat = model_mat['skill']['recall']
-    # false_alarm_mat = model_mat['skill']['falseAlarm']    
-    # assert (np.abs(bs_py-bs_mat)<0.01).all() , 'BS as a function of lead time are for at least one lead time more than 0.01 different.'
-    # assert (np.abs(bss_py-bss_mat)<0.01).all() , 'BSS as a function of lead time are for at least one lead time more than 0.01 different.'
-    # assert (np.abs(bs_se_py-bs_se_mat)<0.01).all() , 'BS SE as a function of lead time are for at least one lead time more than 0.01 different.'
-    # assert (np.abs(bss_se_py-bss_se_mat)<0.01).all() , 'BSS SE as a function of lead time are for at least one lead time more than 0.01 different.'
-    # assert (np.abs(recall_py-recall_mat)<0.01).all() , 'Recall as a function of lead time are for at least one lead time more than 0.01 different.'
-    # assert (np.abs(false_alarm_py-false_alarm_mat)<0.01).all() , 'False alarm rate as a function of lead time are for at least one lead time more than 0.01 different.'
-    # print('Good!')
+    bs_mat = model_mat['skill']['bs']
+    bs_se_mat = model_mat['skill']['bsSE']
+    bss_mat = model_mat['skill']['bss']
+    bss_se_mat = model_mat['skill']['bssSE']
+    recall_mat = model_mat['skill']['recall']
+    false_alarm_mat = model_mat['skill']['falseAlarm']    
+    assert (np.abs(bs_py-bs_mat)<0.01).all() , 'BS as a function of lead time are for at least one lead time more than 0.01 different.'
+    assert (np.abs(bss_py-bss_mat)<0.01).all() , 'BSS as a function of lead time are for at least one lead time more than 0.01 different.'
+    assert (np.abs(bs_se_py-bs_se_mat)<0.01).all() , 'BS SE as a function of lead time are for at least one lead time more than 0.01 different.'
+    assert (np.abs(bss_se_py-bss_se_mat)<0.01).all() , 'BSS SE as a function of lead time are for at least one lead time more than 0.01 different.'
+    assert (np.abs(recall_py-recall_mat)<0.01).all() , 'Recall as a function of lead time are for at least one lead time more than 0.01 different.'
+    assert (np.abs(false_alarm_py-false_alarm_mat)<0.01).all() , 'False alarm rate as a function of lead time are for at least one lead time more than 0.01 different.'
+    print('Good!')
 
 
     
