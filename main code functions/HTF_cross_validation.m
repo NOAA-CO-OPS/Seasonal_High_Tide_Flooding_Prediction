@@ -272,18 +272,19 @@ for stn_i = stationIndex
             testing_endDate = testFold(end);
             testing_endMonth = datestr(testing_endDate, 'yyyymm');
     
-            predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
-                          testing_startMonth,testing_endMonth,resOut,test_data); 
+            %predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
+            %              testing_startMonth,testing_endMonth,resOut,test_data); 
 
             % copy mat file
-            newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(i));
-            save(newpred,'-struct','predOut');
+            %newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(i));
+            %save(newpred,'-struct','predOut');
     
             % SKILL ASSESSMENT
             % Run HTF_cross_valid_skill
+            disp('Calculating skill...')
             skillOut = HTF_cross_valid_skill(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
                                          testing_startDate, testing_endDate,...
-                                         test_data,resOut,predOut);
+                                         test_data,resOut);
         
             allskillOut{i} = skillOut;
             %disp(allskillOut{i})
@@ -297,16 +298,43 @@ for stn_i = stationIndex
         % All observations of threshold being exceeded
         validEntries_ynObs = cellfun(@(s) isstruct(s) && isfield(s, 'ynObs'), allskillOut);
         ynObs_all_fields = cellfun(@(s) s.ynObs, allskillOut(validEntries_ynObs), 'UniformOutput', false);
-    
+        max_rows = max(cellfun(@(x) size(x, 1), ynObs_all_fields));
+        max_cols = max(cellfun(@(x) size(x, 2), ynObs_all_fields));
+        disp(max_rows)
+        % Pad each entry to the maximum number of rows and columns
+        padded_ynObs_fields = cellfun(@(x) [x; nan(max_rows - size(x, 1), size(x, 2))], ...  % Pad rows first
+                                  ynObs_all_fields, ...
+                                  'UniformOutput', false);
+
+        % Now, pad each entry to the maximum number of columns
+        padded_ynObs_fields = cellfun(@(x) [x nan(size(x, 1), max_cols - size(x, 2))], ...  % Pad columns
+                                  padded_ynObs_fields, ...
+                                  'UniformOutput', false);
         ynObs_all_data = vertcat(ynObs_all_fields{:});
     
         % All daily prob
         validEntries_dailyProb = cellfun(@(s) isstruct(s) && isfield(s, 'dailyProb'), allskillOut);
         dailyProb_all_fields = cellfun(@(s) s.dailyProb, allskillOut(validEntries_dailyProb), "UniformOutput", false);
-        dailyProb_all_data = vertcat(dailyProb_all_fields{:});
+        max_rows = max(cellfun(@(x) size(x, 1), dailyProb_all_fields));
+        max_cols = max(cellfun(@(x) size(x, 2), dailyProb_all_fields));
+        disp(max_cols)
+        % Pad each entry to the maximum number of rows and columns
+        padded_dailyProb_fields = cellfun(@(x) [x; nan(max_rows - size(x, 1), size(x, 2))], ...  % Pad rows first
+                                  dailyProb_all_fields, ...
+                                  'UniformOutput', false);
+
+        % Now, pad each entry to the maximum number of columns
+        padded_dailyProb_fields = cellfun(@(x) [x nan(size(x, 1), max_cols - size(x, 2))], ...  % Pad columns
+                                  padded_dailyProb_fields, ...
+                                  'UniformOutput', false);
+        % Check the sizes after padding
+        for i = 1:length(padded_dailyProb_fields)
+            disp(['Size of padded dailyProb field ', num2str(i), ': ', num2str(size(padded_dailyProb_fields{i}))]);
+        end
+        dailyProb_all_data = vertcat(padded_dailyProb_fields{:});
         dailyProb_all = struct('dailyProb', dailyProb_all_data);
-    
-        % Brier skill score for all
+        
+        % Brier skill score for all       
         [bs_all, bss_all, bsSE_all, bssSE_all] = BrierScore(ynObs_all_data, dailyProb_all_data);
         %disp(bs_all)
     
