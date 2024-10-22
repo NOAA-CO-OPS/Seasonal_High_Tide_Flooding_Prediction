@@ -111,10 +111,19 @@ for i = 2:length(testMonthDates)
     %I want to create a corresponding matrix to indicate the forecast lead
     %time for each value
     monthsOrder=month(predOut.dailyProbTime);
-    change_positions = [1 diff(monthsOrder)~=0] == 1;
-    count_array = 1:length(find(change_positions));
-    leadMonths = count_array(cumsum(change_positions));
-    skillOut.leadTime(1:length(predOut.dailyProb),i)=leadMonths;
+    yearsOrder = year(predOut.dailyProbTime);
+    compositeTime = yearsOrder * 12 + monthsOrder;
+    % Displaying the unique values and their counts
+    [uniqueCompositeTime, ~, idx] = unique(compositeTime);
+    numUniquePeriods = length(uniqueCompositeTime);
+    % Initialize leadMonths with zeros
+    leadMonths = zeros(1, length(predOut.dailyProbTime));
+    % Assign lead months based on unique periods
+    for k = 1:numUniquePeriods
+        leadMonths(idx == k) = k; 
+    end
+    % Store the lead months in skillOut
+    skillOut.leadTime(1:length(predOut.dailyProb), i) = leadMonths;
 end
 
 %% 
@@ -156,7 +165,7 @@ end
 dailyProb=NaN(12,length(dailyObs));
 dailyTime=NaT(12,length(dailyObs));
 dailyLead=NaN(12,length(dailyObs));
- for i = 1:length(dailyObs)
+for i = 1:length(dailyObs)
     [ind] = find(skillOut.dateTime == dTimeDays(i));
     dailyProb(1:length(ind),i)=flip(skillOut.prob(ind));
     dailyTime(1:length(ind),i)=flip(skillOut.dateTime(ind));
