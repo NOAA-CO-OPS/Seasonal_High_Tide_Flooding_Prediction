@@ -57,6 +57,8 @@ skillOut.epochCenter=epochCenter;
 %Set up the skill matrices
 testing_startDate.Format = 'dd-MMM-yyyy';
 testing_endDate.Format = 'dd-MMM-yyyy';
+disp("testing_startDate: ")
+disp(testing_startDate)
 testDates = testing_startDate:testing_endDate;
 testMonthDates = testing_startDate:calmonths(1):testing_endDate;
 %disp(testing_dateArray)

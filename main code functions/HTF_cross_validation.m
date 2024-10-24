@@ -304,7 +304,7 @@ for stn_i = stationIndex
     
         % All daily prob - get 1 month lead time values
         validEntries_dailyProb = cellfun(@(s) isstruct(s) && isfield(s, 'dailyProb'), allskillOut);
-        dailyProb_all_fields = cellfun(@(s) flip(s.dailyProb(1, :))', allskillOut(validEntries_dailyProb), "UniformOutput", false);
+        dailyProb_all_fields = cellfun(@(s) s.dailyProb(1, :)', allskillOut(validEntries_dailyProb), "UniformOutput", false);
         dailyProb_all_data = vertcat(dailyProb_all_fields{:});
         dailyProb_all = struct('dailyProb', dailyProb_all_data);
 
@@ -358,8 +358,8 @@ for stn_i = stationIndex
     
     elseif holdOut == "no"        
         % Pull data for dates specified
-        %training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
-        training_data = HTF_data_pull(stationNumStr, '19961201', training_endStr);        
+        training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
+        %training_data = HTF_data_pull(stationNumStr, '19961201', training_endStr);        
         [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat']);
     
         %Convert structured array to table
