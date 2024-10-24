@@ -1065,22 +1065,20 @@ class CoraEngine(HTF_model):
         print('Calculating datums with the CO-OPS Tidal Analysis Datum Calculator...')
         if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_datums.pkl'):
             datums_cora = TadcInterface(hourly_height,latlon[0],latlon[1]).run()
+            with open(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_datums.pkl','wb') as f:
+                pickle.dump(datums_cora,f)
         else:
-            f = open(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'_datums.pkl','rb')
+            f = open(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_datums.pkl','rb')
             datums_cora = pickle.load(f)
         return datums_cora
     
     @staticmethod
     def calc_predictions(hourly_height,latlon,time_recon,cora_data_dir):
         print('Calculating tidal constituents and predictions...')
-        if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_predictions.pkl'):
-            coef = utide.solve(hourly_height['time'],hourly_height['val'],lat=latlon[0])
-            predictions = utide.reconstruct(time_recon,coef)
-            predictions = pd.DataFrame({'time':time_recon,
-                                        'val':predictions['h']})
-        else:
-            f = open(cora_data_dir+'/CORA_AllTime_'+str(latlon[0])+'_'+str(latlon[1])+'_predictions.pkl','rb')
-            predictions = pickle.load(f)           
+        coef = utide.solve(hourly_height['time'],hourly_height['val'],lat=latlon[0])
+        predictions = utide.reconstruct(time_recon,coef)
+        predictions = pd.DataFrame({'time':time_recon,
+                                    'val':predictions['h']})      
         return predictions
     
     @staticmethod
@@ -1090,7 +1088,7 @@ class CoraEngine(HTF_model):
         # t = (hourly_height['time']-hourly_height['time'].iloc[0]).dt.seconds # Relative time in seconds #
         # slope,intercept,rvalue,pvalue,stderr = scipy.stats.linregress(t,hourly_height['val'])
         # slt = (slope/1000)*60*60*365 # Convert m/s to mm/yr #
-        slt = 4
+        slt = 4.2732
         return slt
     
     @staticmethod
@@ -1376,7 +1374,7 @@ class ApiInterface:
 
 class TadcInterface(): 
     def __init__(self,ts,lat,lon):
-        self.ts = ts
+        self.ts = self.prep_data(ts)
         self.lat = lat
         self.lon = lon
         self.path = pkg_resources.resource_filename(__name__, 'lib/CO-OPS-Tidal-Analysis-Datum-Calculator/')
@@ -1389,6 +1387,15 @@ class TadcInterface():
         datums = self.parse_TADC_out()
         return datums
     
+    def prep_data(self,ts):
+        ts_dt = scipy.signal.detrend(ts['val'])
+        ts_dt_withmean = ts_dt+np.nanmean(ts['val'])
+        ts_dt_withmean_nanfilled = ts_dt_withmean.copy()
+        ts_dt_withmean_nanfilled[np.isnan(ts_dt_withmean_nanfilled)] = np.nanmean(ts['val'])       
+        ts_prepped = ts.copy()
+        ts_prepped['val'] = ts_dt_withmean_nanfilled
+        return ts_prepped
+        
     def make_TADC_data(self,ts):
         ts.to_csv(self.path+'ts.csv',index=False)
 
