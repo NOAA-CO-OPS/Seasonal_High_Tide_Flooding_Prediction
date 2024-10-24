@@ -358,8 +358,8 @@ for stn_i = stationIndex
     
     elseif holdOut == "no"        
         % Pull data for dates specified
-        training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
-        %training_data = HTF_data_pull(stationNumStr, '19961201', training_endStr);        
+        %training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
+        training_data = HTF_data_pull(stationNumStr, '19961201', training_endStr);        
         [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat']);
     
         %Convert structured array to table
@@ -388,40 +388,65 @@ for stn_i = stationIndex
         training_end_dt = datetime(training_endStr, 'InputFormat', 'yyyyMMdd');
         training_endMonth = datestr(training_end_dt, 'yyyymm');
 
-        predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
-                           resOut.yrMoTime(2),training_endMonth,resOut,data.data);  
-
-        % copy mat file
-        newpred = sprintf('%s_pred',stationNumStr);
-        save(newpred,'-struct','predOut');
+        % predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
+        %                    resOut.yrMoTime(2),training_endMonth,resOut,data.data);  
+        % 
+        % % copy mat file
+        % newpred = sprintf('%s_pred',stationNumStr);
+        % save(newpred,'-struct','predOut');
 
         % SKILL ASSESSMENT
-        % get data that corresponds with predictions
-        timeInd = find(data.data.dateTime >= predOut.dateTime(1) & data.data.dateTime <= predOut.dateTime(end));
+        disp('Calculating skill...')
+        pred_startDate = datetime(resOut.yrMoTime(2), 'InputFormat', 'dd-MMM-yyyy');
+        pred_endDate = datetime(training_endStr, 'InputFormat', 'yyyyMMdd');
+        % disp(pred_startDate)
+        % disp(pred_endDate)
 
+        % get data that corresponds with predictions
+        %timeInd = find(data.data.dateTime >= predOut.dateTime(1) & data.data.dateTime <= predOut.dateTime(end));
+        %timeInd = find(data.data.dateTime >= pred_startDate & data.data.dateTime <= pred_endDate);
+        timeInd = find(data.data.dateTime >= pred_startDate);
+         
         filteredData.dateTime = data.data.dateTime(timeInd);
         filteredData.wl = data.data.wl(timeInd);
+        filteredData.pred = data.data.pred(timeInd);
+        % disp("last value in dateTime")
+        disp(filteredData.dateTime(end-10:end))
+        % disp("length of filteredData.dateTime")
+        % disp(length(filteredData.dateTime))
+        % disp("last value in pred")
+        % disp(filteredData.pred(end))
+        % disp("length of filteredData.pred")
+        % disp(length(filteredData.pred))
 
         % Run HTF_cross_valid_skill
         skillOut = HTF_cross_valid_skill(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
-                                         training_start_dt, training_end_dt,...
-                                         filteredData,resOut,predOut);
+                                         pred_startDate, pred_endDate,...
+                                         filteredData,resOut);
     
         % Sum total floods
         total_Floods = skillOut.totalYes;
         %disp(total_Floods)
     
-        % Brier skill score
-        bss = skillOut.bss;
-        bssSE = skillOut.bssSE;
+        % Brier skill score for 1 month lead
+        bss = skillOut.bss(1,1);
+        bssSE = skillOut.bssSE(1,1);
 
         %Confusion matrix and stats for the 5% warning threshold
-        recall = skillOut.recall;
-        falseAlarm = skillOut.falseAlarm;
+        recall = skillOut.recall(1,1);
+        falseAlarm = skillOut.falseAlarm(1,1);
 
         % Calculate Root Mean Square Error
-        valid_idx = ~isnan(skillOut.dailyProb) & ~isnan(skillOut.ynObs);
-        rmse = sqrt(mean((skillOut.dailyProb(valid_idx) - skillOut.ynObs(valid_idx)).^2));        
+        % Get the number of observations
+        numObs = length(skillOut.ynObs);
+        %valid_idx = ~isnan(skillOut.dailyProb(1, :)) & ~isnan(skillOut.ynObs);
+        %rmse = sqrt(mean((skillOut.dailyProb(valid_idx) - skillOut.ynObs(valid_idx)).^2));
+        % Create the logical index based on the first numObs elements
+        valid_idx = ~isnan(skillOut.dailyProb(1, 1:numObs)) & ~isnan(skillOut.ynObs);
+        valid_idx = valid_idx(1:numObs); 
+        
+        % Compute RMSE using valid_idx
+        rmse = sqrt(mean((skillOut.dailyProb(1, valid_idx) - skillOut.ynObs(valid_idx)).^2));
 
         % Brier skill score for upper quantile of observations
         % Daily obs
@@ -429,7 +454,7 @@ for stn_i = stationIndex
         %disp(upperQuantileThreshold)
         observedUpperQuantile = skillOut.dailyObs >= upperQuantileThreshold;
         %disp(observedUpperQuantile)
-        [bs_upperQ, bss_upperQ, bsSe_upperQ, bssSE_upperQ] = BrierScore(observedUpperQuantile, skillOut.dailyProb);
+        [bs_upperQ, bss_upperQ, bsSe_upperQ, bssSE_upperQ] = BrierScore(observedUpperQuantile, skillOut.dailyProb(1, :));
 
         %Confusion matrix and stats for the upper quantile
         observedUpperQuantile = double(observedUpperQuantile);
