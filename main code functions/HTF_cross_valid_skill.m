@@ -57,19 +57,17 @@ skillOut.epochCenter=epochCenter;
 %Set up the skill matrices
 testing_startDate.Format = 'dd-MMM-yyyy';
 testing_endDate.Format = 'dd-MMM-yyyy';
-disp("testing_startDate: ")
+%disp("testing_startDate: ")
 disp(testing_startDate)
 testDates = testing_startDate:testing_endDate;
 testMonthDates = testing_startDate:calmonths(1):testing_endDate;
+testDays = unique(dateshift(testDates, 'start', 'day'));
+%disp("length(testDays)")
+%disp(length(testDays))
 %disp(testing_dateArray)
 subset_endDate = testing_startDate + calmonths(12);
 
-skillOut.dateTime = transpose(unique(dateshift(testDates, 'start', 'day')));
-numCols = size(skillOut.dateTime, 2);
-numRows = size(skillOut.dateTime, 1);
-skillOut.prob = NaN(numRows, numCols);
-skillOut.leadTime = NaN(numRows, numCols);
-
+%skillOut.dateTime = transpose(unique(dateshift(testDates, 'start', 'day')));
 
 % Need to skip the first time
 %step since we don't have observations the month before, so filling the
@@ -81,6 +79,20 @@ skillOut.leadTime = NaN(numRows, numCols);
 % else
 %     skillOut.dateTime(:,1)=testMonthDates(1):day(1):testMonthDates(1)+calmonths(12)-day(1);
 % end   
+
+yr1 = testDays(year(testDays)==year(testDays(1)));
+[~,iu] = unique(datestr(yr1,'dd-mmm-yyyy'),'rows','stable');
+yr1_yrMoTime = yr1(iu);
+skillOut.dateTime(1:length(yr1_yrMoTime),1) = yr1_yrMoTime;
+
+numCols = size(skillOut.dateTime, 2);
+% disp("numCols")
+% disp(numCols)
+numRows = size(skillOut.dateTime, 1);
+% disp("numRows")
+% disp(numRows)
+skillOut.prob = NaN(numRows, numCols);
+skillOut.leadTime = NaN(numRows, numCols);
 
 %disp(testMonthDates)
 for i = 2:length(testMonthDates)

@@ -229,7 +229,21 @@ for stn_i = stationIndex
             % Remove rows from data based on logical index
             training_data_table_i = training_data_table(rowsToKeep,:);
             %disp(training_data_table_i(1,:))
-    
+
+            % training_data_table_i = training_data_table;
+            % 
+            % % Replace rows not in 'rowsToKeep' with NaNs
+            % for col = 2:width(training_data_table_i)
+            %     if isnumeric(training_data_table_i{:, col})  % For numeric columns
+            %         training_data_table_i{~rowsToKeep, col} = NaN;
+            %     elseif isdatetime(training_data_table_i{:, col})  % For datetime columns
+            %         training_data_table_i{~rowsToKeep, col} = NaT;    
+            %     else  % For cell, string, or categorical columns
+            %         training_data_table_i{~rowsToKeep, col} = {NaN};
+            %     end
+            % end
+            % disp(training_data_table_i)
+
             rowsToHoldout = ismember(training_data_table.dateTime, testFold);
             %disp(rowsToHoldout)
     
@@ -263,8 +277,7 @@ for stn_i = stationIndex
             save(newres,'-struct','resOut_copy');
     
             % RUN MODEL FOR TEST YEARS
-            % PREDICTION
-            % Run HTF_predict        
+            % format dates       
             testing_startDate = testFold(1);
             testing_startMonth = datestr(testing_startDate, 'yyyymm');
             %disp(testing_startMonth)
@@ -381,7 +394,7 @@ for stn_i = stationIndex
         
         resOut = HTF_residual_calc(stationNumStr, slt(stn_i), epochCenter(stn_i));    
 
-        % Run prediction model
+        % Format dates
         training_start_dt = datetime(training_startStr, 'InputFormat', 'yyyyMMdd');
         training_startMonth = datestr(training_start_dt, 'yyyymm');
         
@@ -410,14 +423,7 @@ for stn_i = stationIndex
         filteredData.dateTime = data.data.dateTime(timeInd);
         filteredData.wl = data.data.wl(timeInd);
         filteredData.pred = data.data.pred(timeInd);
-        % disp("last value in dateTime")
-        disp(filteredData.dateTime(end-10:end))
-        % disp("length of filteredData.dateTime")
-        % disp(length(filteredData.dateTime))
-        % disp("last value in pred")
-        % disp(filteredData.pred(end))
-        % disp("length of filteredData.pred")
-        % disp(length(filteredData.pred))
+        %disp(filteredData.dateTime(end-10:end))
 
         % Run HTF_cross_valid_skill
         skillOut = HTF_cross_valid_skill(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...

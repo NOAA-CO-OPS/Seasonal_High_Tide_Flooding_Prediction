@@ -43,8 +43,10 @@ end
 %Define the start and stop times for the predictions
 if isempty(startMonth)
     startTime=resOut.dateTime(end)+hours(1); %start time should be 1 hour after the end of the previous month
+    startTime.Format = 'yyyy-MM-dd HH:mm';
 else
     startTime=datetime(startMonth,'InputFormat','yyyyMM');
+    startTime.Format = 'yyyy-MM-dd HH:mm';
 end
 
 if isempty(endMonth)
@@ -81,13 +83,50 @@ if skillAssessment == 'n'
     dTime = tc(timeNum);
 
 elseif skillAssessment == 'y'
-
+    
+    
     %Note that backward looking predictions for model creation are
     %generated in UTC, so daylight savings need-not be addressed.
     dTime = startTime:hours(1):endTime;
-    %display(fieldnames(data));
-    timeInd=find(data.dateTime >= startTime & data.dateTime <= endTime);
+    % disp("Last timestamp in dTime:")
+    % disp(dTime(end))
+    % disp("Last timestamp in data.dateTime")
+    % disp(data.dateTime(end-10:end));
+    % Find the timestamps in dTime that are missing from data.dateTime
+    %missingTimestamps = setdiff(dTime, data.dateTime);
+    
+    % Display the number of missing timestamps
+    % disp("Number of missing timestamps:")
+    % disp(length(missingTimestamps))
+    
+    % Display the missing timestamps (if any)
+    %disp("Missing timestamps:")
+    %disp(missingTimestamps)
+    % disp("length(dTime)")
+    % disp(length(dTime))
+    % disp("startTime")
+    % disp(startTime)
+    % disp("endTime")
+    % disp(endTime)
+    % disp("length(pred) before filter")
+    % disp(length(data.pred))
+    % %display(fieldnames(data));
+    timeInd = find(isbetween(data.dateTime, startTime, endTime));
+    % %timeInd=find(data.dateTime >= startTime & data.dateTime <= endTime);
     pred = data.pred(timeInd);
+    % disp("length(pred)")
+    % disp(length(pred))
+    % %disp(pred)
+    % % Check for missing timestamps in data.dateTime
+    % missingTimestamps = setdiff(dTime, data.dateTime(timeInd));
+    % disp("Number of missing timestamps:")
+    % disp(length(missingTimestamps))
+    
+    % % If there are missing timestamps, display them
+    % if ~isempty(missingTimestamps)
+    %     disp("Missing timestamps:")
+    %     disp(missingTimestamps)
+    % end
 end
 
 
@@ -129,13 +168,25 @@ cy=NaN(numMonths,numPercentiles,length(px));
 %First we need to find the anomaly value we should be using (for the case
 %of forward looking predictions, this will just be the last value of the
 %monthly observations).
-amlyInd=find(resOut.yrMoTime < startTime, 1,'last');
+% define the date 1 month before startTime
+beforestartTime = startTime - calmonths(1);
+amlyInd = find(resOut.yrMoTime < startTime & resOut.yrMoTime >= beforestartTime, 1, 'last');
+%amlyInd=find(resOut.yrMoTime < startTime, 1,'last');
 
-if isnan(resOut.mu_monthAmly(amlyInd))
-    %if there isn't a valid anomly value for the month before predictions,
-    %check back the previous 11 months and see if there is an anomaly and
-    %apply that instead, filling the rest of the values with zeros
-    warning(['No observed SL anomaly value for month: ' datestr(resOut.yrMoTime(amlyInd)) '. Using previous month or climatology instead.']);
+% % If no date is found, set amlyInd to NaN
+if isempty(amlyInd)
+    amlyInd = NaN;
+end
+
+% Find 12 months before startTime
+
+disp("beforestartTime:")
+disp(beforestartTime)
+disp("amlyInd:")
+disp(amlyInd)
+    
+if isnan(amlyInd)
+    warning(['No observed SL anomaly value for month. Using previous month or climatology instead.']);
     persApply = zeros(numMonths,1); %Set to zeroes (e.g. just using climatology if no obs within 12 months)
     amlyInd12=find(resOut.yrMoTime < startTime, 12,'last');
     amlyArray12=resOut.mu_monthAmly(amlyInd12);
@@ -146,6 +197,21 @@ if isnan(resOut.mu_monthAmly(amlyInd))
         dampedApply(1:amlyLastGoodInd)=resOut.dampedPers(12-amlyLastGoodInd+1:12);
         persApply = amlyApply.*dampedApply;
     end
+% else if isnan(resOut.mu_monthAmly(amlyInd))
+%     %if there isn't a valid anomly value for the month before predictions,
+%     %check back the previous 11 months and see if there is an anomaly and
+%     %apply that instead, filling the rest of the values with zeros
+%     warning(['No observed SL anomaly value for month: ' datestr(resOut.yrMoTime(amlyInd)) '. Using previous month or climatology instead.']);
+%     persApply = zeros(numMonths,1); %Set to zeroes (e.g. just using climatology if no obs within 12 months)
+%     amlyInd12=find(resOut.yrMoTime < startTime, 12,'last');
+%     amlyArray12=resOut.mu_monthAmly(amlyInd12);
+%     amlyLastGoodInd=find(isfinite(amlyArray12),1,'last');
+%     if ~isempty(amlyLastGoodInd)
+%         amlyApply=amlyArray12(amlyLastGoodInd);
+%         dampedApply=zeros(12,1);
+%         dampedApply(1:amlyLastGoodInd)=resOut.dampedPers(12-amlyLastGoodInd+1:12);
+%         persApply = amlyApply.*dampedApply;
+%     end
 else
     persApply = resOut.mu_monthAmly(amlyInd).*resOut.dampedPers(1:numMonths);
 end
@@ -176,7 +242,8 @@ end
 
 %Apply the cdf to determine probability of exceedance each hour
 forecastProb=NaN(length(predAdj),1);
-
+%disp("length(dTime)")
+%disp(length(dTime))
 for i = 1:length(dTime)
     xVal=find(px > freeboard(i),1);
     monthIndex=find(monthList == month(dTime(i)));
