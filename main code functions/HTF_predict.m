@@ -197,21 +197,21 @@ if isnan(amlyInd)
         dampedApply(1:amlyLastGoodInd)=resOut.dampedPers(12-amlyLastGoodInd+1:12);
         persApply = amlyApply.*dampedApply;
     end
-% else if isnan(resOut.mu_monthAmly(amlyInd))
-%     %if there isn't a valid anomly value for the month before predictions,
-%     %check back the previous 11 months and see if there is an anomaly and
-%     %apply that instead, filling the rest of the values with zeros
-%     warning(['No observed SL anomaly value for month: ' datestr(resOut.yrMoTime(amlyInd)) '. Using previous month or climatology instead.']);
-%     persApply = zeros(numMonths,1); %Set to zeroes (e.g. just using climatology if no obs within 12 months)
-%     amlyInd12=find(resOut.yrMoTime < startTime, 12,'last');
-%     amlyArray12=resOut.mu_monthAmly(amlyInd12);
-%     amlyLastGoodInd=find(isfinite(amlyArray12),1,'last');
-%     if ~isempty(amlyLastGoodInd)
-%         amlyApply=amlyArray12(amlyLastGoodInd);
-%         dampedApply=zeros(12,1);
-%         dampedApply(1:amlyLastGoodInd)=resOut.dampedPers(12-amlyLastGoodInd+1:12);
-%         persApply = amlyApply.*dampedApply;
-%     end
+elseif isnan(resOut.mu_monthAmly(amlyInd))
+    %if there isn't a valid anomly value for the month before predictions,
+    %check back the previous 11 months and see if there is an anomaly and
+    %apply that instead, filling the rest of the values with zeros
+    warning(['No observed SL anomaly value for month: ' datestr(resOut.yrMoTime(amlyInd)) '. Using previous month or climatology instead.']);
+    persApply = zeros(numMonths,1); %Set to zeroes (e.g. just using climatology if no obs within 12 months)
+    amlyInd12=find(resOut.yrMoTime < startTime, 12,'last');
+    amlyArray12=resOut.mu_monthAmly(amlyInd12);
+    amlyLastGoodInd=find(isfinite(amlyArray12),1,'last');
+    if ~isempty(amlyLastGoodInd)
+        amlyApply=amlyArray12(amlyLastGoodInd);
+        dampedApply=zeros(12,1);
+        dampedApply(1:amlyLastGoodInd)=resOut.dampedPers(12-amlyLastGoodInd+1:12);
+        persApply = amlyApply.*dampedApply;
+    end
 else
     persApply = resOut.mu_monthAmly(amlyInd).*resOut.dampedPers(1:numMonths);
 end
