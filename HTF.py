@@ -296,21 +296,32 @@ class HTF_model:
                 data_retrain['hourly_height'] = data_retrain['hourly_height'][~i_test]
                 data_rerun['predictions'] = data_rerun['predictions'][i_test]
                 data_rerun['hourly_height'] = data_rerun['hourly_height'][i_test]
-
+                # Retrain on training subset #
                 out_retrain = self.calc_resids_and_dists(data_retrain,bin_val=self.prctile_bin_val)
-                out_rerun = self.run(data_rerun['predictions'],out_retrain)
+                # Re-run on running subset, while predicting each month at one
+                # month lead time #
+                yrmos = data_rerun['predictions']['time'].dt.to_period('M').unique()
+                prob_daily_1month_all = [np.nan]                     
+                for yrmo in yrmos[1:len(yrmos)]:
+                    print('Generating prediction starting in '+str(yrmo))
+                    pred = data_rerun['predictions'][data_rerun['predictions']['time'].dt.to_period('M')>=yrmo]
+                    pred = pred[pred['time'].dt.to_period('M')<yrmo+12]
+                    out_rerun = self.run(pred,out_retrain)
+                    prob_daily_1month = out_rerun['prob_daily'][out_rerun['prob_daily']['time'].dt.to_period('M')<yrmo+1]
+                    prob_daily_1month_all.append(prob_daily_1month)
+                pred_all = pd.concat([df for df in prob_daily_1month_all if isinstance(df, pd.DataFrame)], ignore_index=True)
                 
-                obs_all['predictions'] = pd.concat([obs_all['predictions'],data_rerun['predictions']],ignore_index=True)
-                obs_all['hourly_height'] = pd.concat([obs_all['hourly_height'],data_rerun['hourly_height']],ignore_index=True)
-                pred_all = pd.concat([pred_all,out_rerun['prob_daily']],ignore_index=True)
-                              
+                for v in ['predictions','hourly_height']:
+                    obs_all[v] = pd.concat([obs_all[v],data_rerun[v]],ignore_index=True)
+                    obs_all[v] = obs_all[v][obs_all[v]['time'].dt.to_period('M')>yrmos[0]]
+
             pred_all = {'prob_daily':pred_all}
             self.out_assess = self.calc_skill(obs_all,pred_all,self.assess_metric)
         
         elif self.assess_method == 'None':
                 raise ValueError(r'The assessment method was set to None, so no assessment can be'+
                                  ' performed. If you would like to perform an assessment, choose'+
-                                 ' an assessment method: DusekEtAl, xvalid_batch, or xvalid_holdout.')
+                                 ' an assessment method: DusekEtAl, in_sample, out_of_sample, or cross_validation.')
         
     def predict(self):
         '''
@@ -405,19 +416,19 @@ class HTF_model:
             
         elif isinstance(loc,list):
             hourly_height = CoraEngine.get_timeseries(loc, 
-                                                      utils.datestr2dt(str(years[0])), 
-                                                      utils.datestr2dt(str(years[1])),
-                                                      cora_data_dir)
-            datums = CoraEngine.calc_datums(hourly_height,
+                                            utils.datestr2dt(str(years[0])), 
+                                            utils.datestr2dt(str(years[1])[0:4]+' '+str(years[1])[4:6]+' '+str(years[1])[6:8]+' 23:59'),
+                                            cora_data_dir)
+            datums        = CoraEngine.calc_datums(hourly_height,
                                             loc,
                                             cora_data_dir)
-            predictions = CoraEngine.calc_predictions(hourly_height,
+            predictions   = CoraEngine.calc_predictions(hourly_height,
                                                       loc,
                                                       hourly_height['time'],
                                                       cora_data_dir)
-            slt = CoraEngine.calc_slt(hourly_height) 
-            epoch_center = CoraEngine.calc_epoch_center(years)
-            flood_thresh = CoraEngine.calc_flood_thresh(datums,thresh_type,thresh_rel)
+            slt           = CoraEngine.calc_slt(hourly_height) 
+            epoch_center  = CoraEngine.calc_epoch_center(years)
+            flood_thresh  = CoraEngine.calc_flood_thresh(datums,thresh_type,thresh_rel)
             
             data = {'ID':loc,
                     'Name':'CORA node',
@@ -1055,11 +1066,9 @@ class CoraEngine(HTF_model):
             ts = ts[ts['time']>=dt_start]
             ts = ts[ts['time']<=dt_end]
             ts = ts.reset_index(drop=True)
-            hourly_height = ts
-                
-        hourly_height = utils.interpolate_ts(hourly_height,dt_start,dt_end)           
+            hourly_height = ts                
         return hourly_height
-    
+
     @staticmethod
     def calc_datums(hourly_height,latlon,cora_data_dir):
         print('Calculating datums with the CO-OPS Tidal Analysis Datum Calculator...')
@@ -1388,14 +1397,27 @@ class TadcInterface():
         return datums
     
     def prep_data(self,ts):
-        ts_dt = scipy.signal.detrend(ts['val'])
-        ts_dt_withmean = ts_dt+np.nanmean(ts['val'])
-        ts_dt_withmean_nanfilled = ts_dt_withmean.copy()
-        ts_dt_withmean_nanfilled[np.isnan(ts_dt_withmean_nanfilled)] = np.nanmean(ts['val'])       
-        ts_prepped = ts.copy()
-        ts_prepped['val'] = ts_dt_withmean_nanfilled
-        return ts_prepped
-        
+        if len(np.where(np.isnan(ts['val']))[0])/len(ts)*100<5:
+            # Detrend, manually with a linear regression #
+            t = np.array((ts['time']-ts['time'].iloc[0]).dt.total_seconds())
+            m,b,r_val,p_val,std_err = scipy.stats.linregress(t[~np.isnan(ts['val'])],ts['val'][~np.isnan(ts['val'])])
+            ts_dt = ts.copy()
+            ts_dt = ts['val'] - (b+(m*t))
+            # Add the mean back to the detrended data #
+            ts_dt_withmean = ts_dt+np.nanmean(ts['val'])
+            # Fill NaNs with the mean of the original timeseries #
+            ts_dt_withmean_nanfilled = ts_dt_withmean.copy()
+            ts_dt_withmean_nanfilled[np.isnan(ts_dt_withmean_nanfilled)] = np.nanmean(ts['val'])       
+            ts_prepped = ts.copy()
+            ts_prepped['val'] = ts_dt_withmean_nanfilled
+            # Interpolate to even hourly spacing #
+            ts_prepped = utils.interpolate_ts(ts_prepped,
+                                              ts_prepped['time'].iloc[0].to_pydatetime(),
+                                              ts_prepped['time'].iloc[-1].to_pydatetime().replace(hour=23,minute=0,second=0))
+            return ts_prepped
+        else:
+            raise ValueError('Hourly height timeseries contains >5% NaNs')
+            
     def make_TADC_data(self,ts):
         ts.to_csv(self.path+'ts.csv',index=False)
 
@@ -1500,7 +1522,7 @@ class utils:
 
     @staticmethod
     def interpolate_ts(ts,dt_start,dt_end):
-        ti = pd.date_range(dt_start,dt_end-datetime.timedelta(hours=1),freq='h')
+        ti = pd.date_range(dt_start,dt_end,freq='h')
         zi = np.interp(ti,ts['time'],ts['val'])
         tsi = pd.DataFrame({'time':ti,'val':zi})       
         return tsi      
