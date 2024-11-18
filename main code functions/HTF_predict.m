@@ -179,12 +179,7 @@ if isempty(amlyInd)
 end
 
 % Find 12 months before startTime
-
-disp("beforestartTime:")
-disp(beforestartTime)
-disp("amlyInd:")
-disp(amlyInd)
-    
+  
 if isnan(amlyInd)
     warning(['No observed SL anomaly value for month. Using previous month or climatology instead.']);
     persApply = zeros(numMonths,1); %Set to zeroes (e.g. just using climatology if no obs within 12 months)
