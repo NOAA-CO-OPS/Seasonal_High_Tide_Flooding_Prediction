@@ -17,13 +17,8 @@ function [skillOut]=HTF_cross_valid_skill(stationNum,minorThresh,slt,epochCenter
 
 %%
 %Load the observed time series from the mat file (a structure called data)
-%load([stationNum,'_data']);
-%load([stationNum,'_res']);
-
 wl=data.wl;
 dTime=data.dateTime;
-%tidePred=resOut.predAdj; % this does not function with cross-validation
-
 
 %% Output the metadata to the data structure
 skillOut.stationNum=stationNum;
@@ -32,71 +27,31 @@ skillOut.slt=slt;
 skillOut.epochCenter=epochCenter;
 
 %% 
-%Will need to run the prediction code 239 times to generate predictions to
-%cover the entire 20 year observation period.  
-% 
-%Set up the skill matrices
-%skillOut.dateTime=NaT(366,240);
-%skillOut.prob=NaN(366,240);
-%skillOut.leadTime=NaN(366,240);
-
-% Remove time components by converting to just the date
-% resOut.yrMoTime = dateshift(resOut.yrMoTime, 'start', 'day');
-% resOut.yrMoTime = datetime(resOut.yrMoTime, 'Format', 'dd-MMM-yyyy');
-% testing_startDate = dateshift(testing_startDate, 'start', 'day');
-% testing_startDate = datetime(testing_startDate, 'Format', 'dd-MMM-yyyy');
-% testing_endDate = dateshift(testing_endDate, 'start', 'day');
-% testing_endDate = datetime(testing_endDate, 'Format', 'dd-MMM-yyyy');
-
-
-
-
-%Will need to run the prediction code 239 times to generate predictions to
-%cover the entire 20 year observation period.  
 % 
 %Set up the skill matrices
 testing_startDate.Format = 'dd-MMM-yyyy';
 testing_endDate.Format = 'dd-MMM-yyyy';
-%disp("testing_startDate: ")
 disp(testing_startDate)
 testDates = testing_startDate:testing_endDate;
 testMonthDates = testing_startDate:calmonths(1):testing_endDate;
 testDays = unique(dateshift(testDates, 'start', 'day'));
-%disp("length(testDays)")
-%disp(length(testDays))
-%disp(testing_dateArray)
 subset_endDate = testing_startDate + calmonths(12);
-
-%skillOut.dateTime = transpose(unique(dateshift(testDates, 'start', 'day')));
 
 % Need to skip the first time
 %step since we don't have observations the month before, so filling the
 %dateTime values for comparing with obs later
-%check if there is a leap year
-% use test dates
-% if mod(year(testMonthDates(1)),4) == 0 && (mod(year(testMonthDates(1)),100) ~= 0 || mod(year(testMonthDates(1)),400) == 0)
-%     skillOut.dateTime(:,1)=testMonthDates(1):day(1):testMonthDates(1)+calmonths(12);
-% else
-%     skillOut.dateTime(:,1)=testMonthDates(1):day(1):testMonthDates(1)+calmonths(12)-day(1);
-% end   
-
+% check for leap year
 yr1 = testDays(year(testDays)==year(testDays(1)));
 [~,iu] = unique(datestr(yr1,'dd-mmm-yyyy'),'rows','stable');
 yr1_yrMoTime = yr1(iu);
 skillOut.dateTime(1:length(yr1_yrMoTime),1) = yr1_yrMoTime;
 
 numCols = size(skillOut.dateTime, 2);
-% disp("numCols")
-% disp(numCols)
 numRows = size(skillOut.dateTime, 1);
-% disp("numRows")
-% disp(numRows)
 skillOut.prob = NaN(numRows, numCols);
 skillOut.leadTime = NaN(numRows, numCols);
 
-%disp(testMonthDates)
 for i = 2:length(testMonthDates)
-    %disp(i)
     disp(['Formatting prediction starting in:' datestr(testMonthDates(i))]);
 
     %For the end of the time series, need to shorten the prediction window
@@ -107,22 +62,10 @@ for i = 2:length(testMonthDates)
         [predOut] = HTF_predict(stationNum,minorThresh,slt,epochCenter,datestr(testMonthDates(i),'yyyymm'),[],resOut,data);
     end
     
-    % Need to figure out how to break these into year long chunks that
-    % increment up 1 day with each ith column
     skillOut.prob(1:length(predOut.dailyProb),i)=predOut.dailyProb;
     skillOut.dateTime(1:length(predOut.dailyProb),i)=predOut.dailyProbTime;
 
-    % Get the number of columns
-%    numCols = size(predOut.dailyProb, 2);
-
-    % Loop through each column and increment the datetime
-%    for j = 1:numCols
-%        testing_startDate = predOut.dailyProbTime + caldays(j-1);
-
-%        skillOut.dateTime(:, j) = testing_startDate + caldays(0:length(predOut.dailyProb)-1);
-%    end    
-
-    %I want to create a corresponding matrix to indicate the forecast lead
+    %create a corresponding matrix to indicate the forecast lead
     %time for each value
     monthsOrder=month(predOut.dailyProbTime);
     yearsOrder = year(predOut.dailyProbTime);
@@ -199,7 +142,6 @@ skillOut.dailyTidePred=dailyTidePred;
 %%
 %Now calculate some skill estimates for the forecast over the total time
 %window
-
 skillOut.totalYes=nansum(ynObs);
 skillOut.fracYes=skillOut.totalYes/length(find(isfinite(ynObs)));
 skillOut.bs=NaN(12,1);
@@ -221,63 +163,6 @@ for i = 1:12
     skillOut.recall(i)=skillOut.confusion05(i).recall;
     skillOut.falseAlarm(i)=skillOut.confusion05(i).falseAlarm;
 end
-
-% For cross-validation, 1-month lead ONLY
-% skillOut.totalYes = nansum(ynObs);
-% skillOut.fracYes = skillOut.totalYes/length(find(isfinite(ynObs)));
-% skillOut.bs = NaN(1,1);
-% skillOut.bss = NaN(1,1);
-% skillOut.bsSE = NaN(1,1);
-% skillOut.bssSE = NaN(1,1);
-% skillOut.recall = NaN(1,1);
-% skillOut.falseAlarm = NaN(1,1);
-
-% %Calculate Brier Scores and Brier Skill Scores by month lead time
-% [skillOut.bs,skillOut.bss,skillOut.bsSE,skillOut.bssSE] = BrierScore(ynObs,skillOut.dailyProb);
-% %Calculate reliability stats (to plot with reliability diagrams)
-% skillOut.rel = reliability(ynObs,skillOut.dailyProb);
-% %Confusion matrix and stats for the 5% warning threshold
-% skillOut.confusion05 = confusionStats(ynObs,skillOut.dailyProb,0.05);
-% %Output recall (fraction of flood events predicted) and false alarm
-% %rates (no flood, but warned one might occur)
-% skillOut.recall = skillOut.confusion05.recall;
-% skillOut.falseAlarm = skillOut.confusion05.falseAlarm;
-
-
-%Now for the 1-month lead ONLY, calculate skill for the last 5 years and 10
-%years to assess potential influence of SLR
-
-%yr10ind=find(skillOut.dailyProbTime >=skillOut.dailyProbTime(end)-years(10));
-%yr5ind=find(skillOut.dailyProbTime >=skillOut.dailyProbTime(end)-years(5));
-
-%10yr
-%skillOut.totalYes10yr=nansum(ynObs(yr10ind));
-%skillOut.fracYes10yr=skillOut.totalYes10yr/length(find(isfinite(ynObs(yr10ind))));
-%skillOut.bss10yr=NaN;
-%skillOut.bss10yr=NaN;
-%skillOut.bssSE10yr=NaN;
-%skillOut.recall10yr=NaN;
-%skillOut.falseAlarm10yr=NaN;
-
-%[~,skillOut.bss10yr,~,skillOut.bssSE10yr] = BrierScore(ynObs(yr10ind),skillOut.dailyProb(1,yr10ind));
-%skillOut.confusion10yr = confusionStats(ynObs(yr10ind),skillOut.dailyProb(1,yr10ind),0.05);
-%skillOut.recall10yr=skillOut.confusion10yr.recall;
-%skillOut.falseAlarm10yr=skillOut.confusion10yr.falseAlarm;
-
-%5yr
-%skillOut.totalYes5yr=nansum(ynObs(yr5ind));
-%skillOut.fracYes5yr=skillOut.totalYes5yr/length(find(isfinite(ynObs(yr5ind))));
-%skillOut.bss5yr=NaN;
-%skillOut.bss5yr=NaN;
-%skillOut.bssSE5yr=NaN;
-%skillOut.recall5yr=NaN;
-%skillOut.falseAlarm5yr=NaN;
-
-%[~,skillOut.bss5yr,~,skillOut.bssSE5yr] = BrierScore(ynObs(yr5ind),skillOut.dailyProb(1,yr5ind));
-%skillOut.confusion5yr = confusionStats(ynObs(yr5ind),skillOut.dailyProb(1,yr5ind),0.05);
-%skillOut.recall5yr=skillOut.confusion5yr.recall;
-%skillOut.falseAlarm5yr=skillOut.confusion5yr.falseAlarm;
-
 
 %%
 %Save the files

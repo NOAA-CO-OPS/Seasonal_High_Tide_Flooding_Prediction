@@ -19,11 +19,13 @@ function HTF_cross_validation(stationList, training_startStr, training_endStr, .
 % months_or_folds - is a variable that specifies whether to determine the
 %    number of folds to split the data into for cross-validation by
 %    directly indicating the number of folds ("folds") or by indicating the
-%    number of months to include ("months"). 
+%    number of months to include ("months"). If no data should be in a
+%    holdout, then specify "folds".
 
-% numMonths_or_numFolds - is either the number of months to include each group 
+% numMonths_or_numFolds - is either the number of months to include in each group 
 %   that the data is split into for cross-validation OR the number of folds
-%   or groups that the data is split into. 
+%   or groups that the data is split into. If no data should be in a
+%   holdout, then specify "0" for the number of folds.
 
 % holdOut - is a binary "yes" or "no" which indicates whether each fold
 % should be held out of the training dataset and tested. If "no", then all
@@ -54,7 +56,6 @@ if isempty(stationIndex)
 end    
 
 % Convert date formats from input
-%training_startStr = '19961201';
 training_startdt = datetime(training_startStr, 'InputFormat', 'yyyyMMdd')-calmonths(1);
 %disp(training_startdt)
 training_startStr = char(training_startdt, 'yyyyMMdd');
@@ -73,7 +74,6 @@ training_years = training_startYear:training_endYear;
 % Create datetime array with hourly intervals
 training_timeSeries = training_start_date_time:hours(1):training_end_date_time;
 
-%numDays = length(training_timeSeries); 
 uniqueMonths = unique(month(training_timeSeries) + year(training_timeSeries)*100);
 numMonths = length(uniqueMonths);
 %disp(numMonths)
@@ -94,57 +94,6 @@ end
 
 % Separate the time series into folds without splitting months
 folds = cell(1, numFolds);
-
-% % Option 1 - Randomly select unique months to hold out
-% if random_or_seq == "random"
-%     % Karen - this isn't working and completely random doesn't necessarily
-%     % make sense for this assessment. I could specify the months
-%     % to always include. However, would non-consecutive data in the hold out set
-%     % make sense?
-% 
-%     % Randomly partition months into k groups
-%     cv = cvpartition(numMonths, 'KFold', numFolds);
-% 
-%     for i = 1:numFolds
-%         % Get the training and validation months
-%         testIdx = test(cv, i); 
-%         trainIdx = training(cv, i);
-% 
-%         valMonths = uniqueMonths(testIdx);
-%         trainMonths = uniqueMonths(trainIdx);
-% 
-%         foldIndices = ismember(month(training_timeSeries) + year(training_timeSeries)*100, valMonths);
-%         folds{i} = training_timeSeries(foldIndices);
-%         disp(folds{i})
-%     end    
-% 
-% % Option 2 - Select a sequence unique months to hold out
-% elseif random_or_seq == "sequence"
-% 
-%     currentMonthIdx = 1;
-% 
-%     for i = 1:numFolds
-% 
-%         startMonthIdx = currentMonthIdx;
-% 
-%         if i < numFolds
-%             endMonthIdx = startMonthIdx + foldSize - 1;
-%         else
-%             endMonthIdx = numMonths;
-%         end
-% 
-%         selectedMonths = uniqueMonths(startMonthIdx:endMonthIdx);
-% 
-%         foldIndices = ismember(month(training_timeSeries) + year(training_timeSeries)*100, selectedMonths);    
-% 
-%         folds{i} = training_timeSeries(foldIndices);
-%         %disp(folds{i})
-% 
-%         currentMonthIdx = endMonthIdx + 1;        
-% 
-%     end   
-% 
-% end
 
 %Select a sequence unique months to hold out
 currentMonthIdx = 2;
@@ -170,19 +119,10 @@ for i = 1:numFolds
 end    
 
 % Initialize empty array for output
-%output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
-%                       'avg_bss', 'avg_bssSE', 'avg_recall', 'avg_false_alarm'};
-% Initialize empty array for output
-%output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
-%                       'bss', 'bssSE', 'recall', 'false_alarm'};
-%output_columnNames = {'StationID','minorThreshDerived','Total Floods', 'skillful'...
-%                       'bss', 'bssSE', 'recall', 'false_alarm', 'bss_upperQ', 'bssSE_upperQ'...
-%                       'recall_upperQ', 'falseAlarm_upperQ'};
 output_columnNames = {'StationID','minorThreshDerived','upper quantile', 'Total Floods', 'skillful'...
                        'bss', 'bssSE', 'recall', 'false_alarm', 'rmse', 'bss_upperQ', 'bssSE_upperQ'...
                        'recall_upperQ', 'falseAlarm_upperQ'};
 output_cell_array = [];
-%output_cell_array = cell(n, length(output_columnNames));
 output_cell_array = [output_cell_array, output_columnNames];
 
 
@@ -197,12 +137,8 @@ for stn_i = stationIndex
     allskillOut = cell(1, length(numFolds));
     
     % Data for training
-    %training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
-    % Pull data from 1 year before training start date specified to end
-    % date specified
-    %pre_training_year = datestr(training_startdt - calyears(1), 'yyyymmdd');
+    % Pull data from training start date specified to end date specified
     training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
-    %training_data = HTF_data_pull(stationNumStr, pre_training_year, training_endStr);
     [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat']);
 
     %Convert structured array to table
@@ -229,20 +165,6 @@ for stn_i = stationIndex
             % Remove rows from data based on logical index
             training_data_table_i = training_data_table(rowsToKeep,:);
             %disp(training_data_table_i(1,:))
-
-            % training_data_table_i = training_data_table;
-            % 
-            % % Replace rows not in 'rowsToKeep' with NaNs
-            % for col = 2:width(training_data_table_i)
-            %     if isnumeric(training_data_table_i{:, col})  % For numeric columns
-            %         training_data_table_i{~rowsToKeep, col} = NaN;
-            %     elseif isdatetime(training_data_table_i{:, col})  % For datetime columns
-            %         training_data_table_i{~rowsToKeep, col} = NaT;    
-            %     else  % For cell, string, or categorical columns
-            %         training_data_table_i{~rowsToKeep, col} = {NaN};
-            %     end
-            % end
-            % disp(training_data_table_i)
 
             rowsToHoldout = ismember(training_data_table.dateTime, testFold);
             %disp(rowsToHoldout)
@@ -284,14 +206,7 @@ for stn_i = stationIndex
     
             testing_endDate = testFold(end);
             testing_endMonth = datestr(testing_endDate, 'yyyymm');
-    
-            %predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
-            %              testing_startMonth,testing_endMonth,resOut,test_data); 
-
-            % copy mat file
-            %newpred = sprintf('%s_pred_test_omit_%s',stationNumStr,num2str(i));
-            %save(newpred,'-struct','predOut');
-    
+       
             % SKILL ASSESSMENT
             % Run HTF_cross_valid_skill
             disp('Calculating skill...')
@@ -371,8 +286,7 @@ for stn_i = stationIndex
     
     elseif holdOut == "no"        
         % Pull data for dates specified
-        training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);
-        %training_data = HTF_data_pull(stationNumStr, '19961201', training_endStr);        
+        training_data = HTF_data_pull(stationNumStr, training_startStr, training_endStr);     
         [~] = movefile([stationNumStr,'_data.mat'],[stationNumStr,'_data_training.mat']);
     
         %Convert structured array to table
@@ -401,13 +315,6 @@ for stn_i = stationIndex
         training_end_dt = datetime(training_endStr, 'InputFormat', 'yyyyMMdd');
         training_endMonth = datestr(training_end_dt, 'yyyymm');
 
-        % predOut = HTF_predict(stationNumStr,minorThreshDerived(stn_i),slt(stn_i),epochCenter(stn_i),...
-        %                    resOut.yrMoTime(2),training_endMonth,resOut,data.data);  
-        % 
-        % % copy mat file
-        % newpred = sprintf('%s_pred',stationNumStr);
-        % save(newpred,'-struct','predOut');
-
         % SKILL ASSESSMENT
         disp('Calculating skill...')
         pred_startDate = datetime(resOut.yrMoTime(2), 'InputFormat', 'dd-MMM-yyyy');
@@ -416,8 +323,6 @@ for stn_i = stationIndex
         % disp(pred_endDate)
 
         % get data that corresponds with predictions
-        %timeInd = find(data.data.dateTime >= predOut.dateTime(1) & data.data.dateTime <= predOut.dateTime(end));
-        %timeInd = find(data.data.dateTime >= pred_startDate & data.data.dateTime <= pred_endDate);
         timeInd = find(data.data.dateTime >= pred_startDate);
          
         filteredData.dateTime = data.data.dateTime(timeInd);
@@ -476,11 +381,6 @@ for stn_i = stationIndex
         %disp(skillful);
     
         %Define data to output to table 
-        %output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,bss,...
-        %               bssSE, recall, falseAlarm};  
-        %output_data = {stationNumStr, minorThreshDerived(stn_i), total_Floods,skillful,bss,...
-        %               bssSE, recall, falseAlarm, bss_upperQ, bssSE_upperQ...
-        %               recall_upperQ, falseAlarm_upperQ};
         output_data = {stationNumStr, minorThreshDerived(stn_i), upperQuantileThreshold, total_Floods,skillful,...
                        bss, bssSE, recall, falseAlarm, rmse, bss_upperQ, bssSE_upperQ...
                        recall_upperQ, falseAlarm_upperQ};
