@@ -83,50 +83,12 @@ if skillAssessment == 'n'
     dTime = tc(timeNum);
 
 elseif skillAssessment == 'y'
-    
-    
+   
     %Note that backward looking predictions for model creation are
     %generated in UTC, so daylight savings need-not be addressed.
     dTime = startTime:hours(1):endTime;
-    % disp("Last timestamp in dTime:")
-    % disp(dTime(end))
-    % disp("Last timestamp in data.dateTime")
-    % disp(data.dateTime(end-10:end));
-    % Find the timestamps in dTime that are missing from data.dateTime
-    %missingTimestamps = setdiff(dTime, data.dateTime);
-    
-    % Display the number of missing timestamps
-    % disp("Number of missing timestamps:")
-    % disp(length(missingTimestamps))
-    
-    % Display the missing timestamps (if any)
-    %disp("Missing timestamps:")
-    %disp(missingTimestamps)
-    % disp("length(dTime)")
-    % disp(length(dTime))
-    % disp("startTime")
-    % disp(startTime)
-    % disp("endTime")
-    % disp(endTime)
-    % disp("length(pred) before filter")
-    % disp(length(data.pred))
-    % %display(fieldnames(data));
     timeInd = find(isbetween(data.dateTime, startTime, endTime));
-    % %timeInd=find(data.dateTime >= startTime & data.dateTime <= endTime);
     pred = data.pred(timeInd);
-    % disp("length(pred)")
-    % disp(length(pred))
-    % %disp(pred)
-    % % Check for missing timestamps in data.dateTime
-    % missingTimestamps = setdiff(dTime, data.dateTime(timeInd));
-    % disp("Number of missing timestamps:")
-    % disp(length(missingTimestamps))
-    
-    % % If there are missing timestamps, display them
-    % if ~isempty(missingTimestamps)
-    %     disp("Missing timestamps:")
-    %     disp(missingTimestamps)
-    % end
 end
 
 
