@@ -9,7 +9,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='HTF',
-    version='2.0.5',
+    version='2.0.6',
     packages=find_packages(),
     package_data={
         'HTF': ['data/HighTideOutlookStationList_05_17_23_PAC_SLT.csv'],

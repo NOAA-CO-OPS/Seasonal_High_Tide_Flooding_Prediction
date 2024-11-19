@@ -26,7 +26,8 @@ def run_model_py(station,years_fit,years_pred):
                     assess_metric='htf_days',
                     fold_size=1,
                     prctile_bin_val='pred_adj',
-                    cora_data_dir=None)
+                    cora_data_dir=None,
+                    temp_cora_retrend=None)
     model.train()
     model.predict()
     model.assess()    

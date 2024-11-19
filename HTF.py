@@ -103,7 +103,12 @@ class HTF_model:
         
     cora_data_dir: str, optional
         The directory of saved CORA timeseries and/or computed parameters, if it
-        exists. IN DEVELOPMENT. The default is None.
+        exists. The default is None.
+        
+    temp_cora_retrend: list of float, optional
+        The trend in m/s to artifically give the CORA hourly_height timeseries. This is meant
+        to be a temporary parameter for using CORA V1.0, which has bad trends. This is meant to
+        be removed when V1.1 is available. The default is None, which means do not retrend.
 
     Methods
     ------
@@ -138,7 +143,7 @@ class HTF_model:
                  thresh_type='NOS',thresh_rel=0,
                  assess_method='DusekEtAl',assess_metric='htf_days',
                  fold_size=1,prctile_bin_val='pred_adj',
-                 cora_data_dir=None):     
+                 cora_data_dir=None,temp_cora_retrend=None):     
         '''
         Initializes the HTF model and does initial error checking of inputs.
 
@@ -154,6 +159,7 @@ class HTF_model:
         self.fold_size = fold_size
         self.prctile_bin_val = prctile_bin_val
         self.cora_data_dir = cora_data_dir
+        self.temp_cora_retrend = temp_cora_retrend
         
         # Check that either a NWLON or lat/lon were provided correctly #
         if not isinstance(self.loc,int) and not isinstance(self.loc,list):
@@ -184,7 +190,8 @@ class HTF_model:
         After running, model object contains an attribute named out_train
 
         '''
-        data = self.pull_data(self.loc,self.years_fit,'gmt',self.thresh_type,self.thresh_rel,self.cora_data_dir)
+        data = self.pull_data(self.loc,self.years_fit,'gmt',self.thresh_type,self.thresh_rel,
+                              self.cora_data_dir,self.temp_cora_retrend)
         self.out_train = self.calc_resids_and_dists(data,bin_val=self.prctile_bin_val)
         
         
@@ -268,7 +275,7 @@ class HTF_model:
         elif self.assess_method == 'out_of_sample':
             # Get the new out-of-training-sample data for the validation #
             print('Downloading and formatting the new out of sample observations. This can take a while...')
-            data = self.pull_data(self.loc,self.years_assess,'lst_ldt',self.thresh_type,self.thresh_rel,self.cora_data_dir)           
+            data = self.pull_data(self.loc,self.years_assess,'lst_ldt',self.thresh_type,self.thresh_rel,self.cora_data_dir,self.temp_cora_retrend)           
             # Run the trained model on the new data #
             print('Running the trained model on the new observations...')
             out_run = self.run(data['predictions'],self.out_train)                                                  
@@ -349,7 +356,7 @@ class HTF_model:
 
            
     @staticmethod    
-    def pull_data(loc,years,time_zone,thresh_type,thresh_rel,cora_data_dir):
+    def pull_data(loc,years,time_zone,thresh_type,thresh_rel,cora_data_dir,temp_cora_retrend):
         '''
         Function to get and format the observed and predicted hourly water levels for
         the desired time period.
@@ -419,6 +426,7 @@ class HTF_model:
                                             utils.datestr2dt(str(years[0])), 
                                             utils.datestr2dt(str(years[1])[0:4]+' '+str(years[1])[4:6]+' '+str(years[1])[6:8]+' 23:59'),
                                             cora_data_dir)
+            hourly_height = CoraEngine.temp_retrend(hourly_height,temp_cora_retrend)
             datums        = CoraEngine.calc_datums(hourly_height,
                                             loc,
                                             cora_data_dir)
@@ -1091,13 +1099,27 @@ class CoraEngine(HTF_model):
         return predictions
     
     @staticmethod
+    def temp_retrend(hourly_height,trend):
+        breakpoint()
+        # Detrend the CORA timeseries #
+        td = (hourly_height['time'].dt.to_pydatetime()-hourly_height['time'].dt.to_pydatetime()[0])
+        tds = np.array([td[i].total_seconds() for i in range(len(hourly_height))])
+        slope,intercept,r_value,p_value,std_err = scipy.stats.linregress(tds[~np.isnan(hourly_height['val'])],hourly_height['val'][~np.isnan(hourly_height['val'])])             
+        hourly_height_dt = hourly_height.copy()
+        hourly_height_dt['val'] = hourly_height['val']-(tds*slope)
+        # Put the desired trend in #
+        hourly_height_rt = hourly_height.copy()
+        hourly_height_rt['val'] = hourly_height_dt['val']+(tds*trend)
+        return hourly_height_rt
+        
+    @staticmethod
     def calc_slt(hourly_height):
         print('Computing the sea level trend...')
-        # hourly_height = hourly_height.dropna()
-        # t = (hourly_height['time']-hourly_height['time'].iloc[0]).dt.seconds # Relative time in seconds #
-        # slope,intercept,rvalue,pvalue,stderr = scipy.stats.linregress(t,hourly_height['val'])
-        # slt = (slope/1000)*60*60*365 # Convert m/s to mm/yr #
-        slt = 4.2732
+        td = (hourly_height['time'].dt.to_pydatetime()-hourly_height['time'].dt.to_pydatetime()[0])
+        tds = np.array([td[i].total_seconds() for i in range(len(hourly_height))])
+        slope,intercept,rvalue,pvalue,stderr = scipy.stats.linregress(tds[~np.isnan(hourly_height['val'])],hourly_height['val'][~np.isnan(hourly_height['val'])])
+        slt = (slope*1000)*60*60*24*365 # Convert m/s to mm/yr #
+        # slt = 4.2732
         return slt
     
     @staticmethod
