@@ -425,15 +425,11 @@ class HTF_model:
             hourly_height = CoraEngine.get_timeseries(loc, 
                                                       utils.datestr2dt(str(years[0])), 
                                                       utils.datestr2dt(str(years[1])[0:4]+' '+str(years[1])[4:6]+' '+str(years[1])[6:8]+' 23:59'),
-                                                      cora_data_dir)
-            
-            if temp_cora_retrend is not None:
-                hourly_height = CoraEngine.temp_retrend(hourly_height,temp_cora_retrend)
-                
+                                                      cora_data_dir,temp_cora_retrend)                
             datums        = CoraEngine.calc_datums(CoraEngine.get_timeseries(loc, 
                                                         datetime.datetime(1983,1,1), 
                                                         datetime.datetime(2001,12,31,23,0),
-                                                        cora_data_dir),
+                                                        cora_data_dir,temp_cora_retrend),
                                                     loc,
                                                     cora_data_dir)
             predictions   = CoraEngine.calc_predictions(hourly_height,
@@ -1050,7 +1046,7 @@ class ModelEngine():
 
 class CoraEngine(HTF_model):
     @staticmethod
-    def get_timeseries(latlon,dt_start,dt_end,cora_data_dir): 
+    def get_timeseries(latlon,dt_start,dt_end,cora_data_dir,retrend): 
         if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022.pkl'):
             print('Downloading CORA output. This takes a very long time...')
             catalog = intake.open_catalog("s3://noaa-nos-cora-pds/CORA_intake.yml",storage_options={'anon':True})
@@ -1077,6 +1073,7 @@ class CoraEngine(HTF_model):
             print('Loading saved CORA timeseries...')
             f = open(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022.pkl','rb')
             ts = pickle.load(f)
+            ts = CoraEngine.temp_retrend(ts,retrend)
             ts = ts[ts['time']>=dt_start]
             ts = ts[ts['time']<=dt_end]
             ts = ts.reset_index(drop=True)
@@ -1106,17 +1103,20 @@ class CoraEngine(HTF_model):
     
     @staticmethod
     def temp_retrend(hourly_height,trend):
-        # Detrend the CORA timeseries #
-        td = (hourly_height['time'].dt.to_pydatetime()-hourly_height['time'].dt.to_pydatetime()[0])
-        tds = np.array([td[i].total_seconds() for i in range(len(hourly_height))])
-        slope,intercept,r_value,p_value,std_err = scipy.stats.linregress(tds[~np.isnan(hourly_height['val'])],hourly_height['val'][~np.isnan(hourly_height['val'])])             
-        hourly_height_dt = hourly_height.copy()
-        hourly_height_dt['val'] = hourly_height['val']-(tds*slope)
-        # Put the desired trend in #
-        hourly_height_rt = hourly_height.copy()
-        hourly_height_rt['val'] = hourly_height_dt['val']+(tds*trend)
-        return hourly_height_rt
-        
+        if trend is not None:
+            # Detrend the CORA timeseries #
+            td = (hourly_height['time'].dt.to_pydatetime()-hourly_height['time'].dt.to_pydatetime()[0])
+            tds = np.array([td[i].total_seconds() for i in range(len(hourly_height))])
+            slope,intercept,r_value,p_value,std_err = scipy.stats.linregress(tds[~np.isnan(hourly_height['val'])],hourly_height['val'][~np.isnan(hourly_height['val'])])             
+            hourly_height_dt = hourly_height.copy()
+            hourly_height_dt['val'] = hourly_height['val']-(tds*slope)
+            # Put the desired trend in #
+            hourly_height_rt = hourly_height.copy()
+            hourly_height_rt['val'] = hourly_height_dt['val']+(tds*trend)
+            return hourly_height_rt
+        else:
+            return hourly_height
+             
     @staticmethod
     def calc_slt(hourly_height):
         print('Computing the sea level trend...')
