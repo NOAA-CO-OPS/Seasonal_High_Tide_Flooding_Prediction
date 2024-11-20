@@ -423,13 +423,19 @@ class HTF_model:
             
         elif isinstance(loc,list):
             hourly_height = CoraEngine.get_timeseries(loc, 
-                                            utils.datestr2dt(str(years[0])), 
-                                            utils.datestr2dt(str(years[1])[0:4]+' '+str(years[1])[4:6]+' '+str(years[1])[6:8]+' 23:59'),
-                                            cora_data_dir)
-            hourly_height = CoraEngine.temp_retrend(hourly_height,temp_cora_retrend)
-            datums        = CoraEngine.calc_datums(hourly_height,
-                                            loc,
-                                            cora_data_dir)
+                                                      utils.datestr2dt(str(years[0])), 
+                                                      utils.datestr2dt(str(years[1])[0:4]+' '+str(years[1])[4:6]+' '+str(years[1])[6:8]+' 23:59'),
+                                                      cora_data_dir)
+            
+            if temp_cora_retrend is not None:
+                hourly_height = CoraEngine.temp_retrend(hourly_height,temp_cora_retrend)
+                
+            datums        = CoraEngine.calc_datums(CoraEngine.get_timeseries(loc, 
+                                                        datetime.datetime(1983,1,1), 
+                                                        datetime.datetime(2001,12,31,23,0),
+                                                        cora_data_dir),
+                                                    loc,
+                                                    cora_data_dir)
             predictions   = CoraEngine.calc_predictions(hourly_height,
                                                       loc,
                                                       hourly_height['time'],
@@ -1100,7 +1106,6 @@ class CoraEngine(HTF_model):
     
     @staticmethod
     def temp_retrend(hourly_height,trend):
-        breakpoint()
         # Detrend the CORA timeseries #
         td = (hourly_height['time'].dt.to_pydatetime()-hourly_height['time'].dt.to_pydatetime()[0])
         tds = np.array([td[i].total_seconds() for i in range(len(hourly_height))])
