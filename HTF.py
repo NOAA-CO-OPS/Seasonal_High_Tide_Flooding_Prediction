@@ -422,23 +422,24 @@ class HTF_model:
                     'predictions':data_api['predictions']}   
             
         elif isinstance(loc,list):
-            hourly_height = CoraEngine.get_timeseries(loc, 
-                                                      utils.datestr2dt(str(years[0])), 
-                                                      utils.datestr2dt(str(years[1])[0:4]+' '+str(years[1])[4:6]+' '+str(years[1])[6:8]+' 23:59'),
-                                                      cora_data_dir,temp_cora_retrend)                
-            datums        = CoraEngine.calc_datums(CoraEngine.get_timeseries(loc, 
-                                                        datetime.datetime(1983,1,1), 
-                                                        datetime.datetime(2001,12,31,23,0),
-                                                        cora_data_dir,temp_cora_retrend),
-                                                    loc,
-                                                    cora_data_dir)
-            predictions   = CoraEngine.calc_predictions(hourly_height,
-                                                      loc,
-                                                      hourly_height['time'],
-                                                      cora_data_dir)
-            slt           = CoraEngine.calc_slt(hourly_height) 
-            epoch_center  = CoraEngine.calc_epoch_center(years)
-            flood_thresh  = CoraEngine.calc_flood_thresh(datums,thresh_type,thresh_rel)
+            hourly_height_msl   = CoraEngine.get_timeseries(loc, 
+                                                          utils.datestr2dt(str(years[0])), 
+                                                          utils.datestr2dt(str(years[1])[0:4]+' '+str(years[1])[4:6]+' '+str(years[1])[6:8]+' 23:59'),
+                                                          cora_data_dir,temp_cora_retrend)                
+            datums_msl          = CoraEngine.calc_datums(CoraEngine.get_timeseries(loc, 
+                                                             datetime.datetime(1983,1,1), 
+                                                             datetime.datetime(2001,12,31,23,0),
+                                                             cora_data_dir,temp_cora_retrend),
+                                                         loc,
+                                                         cora_data_dir)
+            hourly_height,datums = CoraEngine.msl2mhhw(hourly_height_msl,datums_msl)
+            predictions          = CoraEngine.calc_predictions(hourly_height,
+                                                            loc,
+                                                            hourly_height['time'],
+                                                            cora_data_dir)
+            slt                  = CoraEngine.calc_slt(hourly_height) 
+            epoch_center         = CoraEngine.calc_epoch_center(years)
+            flood_thresh         = CoraEngine.calc_flood_thresh(datums,thresh_type,thresh_rel)
             
             data = {'ID':loc,
                     'Name':'CORA node',
@@ -1093,6 +1094,16 @@ class CoraEngine(HTF_model):
         return datums_cora
     
     @staticmethod
+    def msl2mhhw(hourly_height_msl,datums_msl):
+        mhhw = float(datums_msl[datums_msl['datum']=='MHHW']['value'])
+        hourly_height_mhhw = hourly_height_msl.copy()
+        hourly_height_mhhw['val'] = hourly_height_mhhw['val']-mhhw
+        datums_mhhw = datums_msl.copy()
+        for datum in datums_mhhw['datum']:
+            datums_mhhw.loc[np.where(datums_mhhw['datum']==datum)[0][0],'value'] = datums_mhhw.loc[np.where(datums_mhhw['datum']==datum)[0][0],'value']-mhhw
+        return hourly_height_mhhw,datums_mhhw
+        
+    @staticmethod
     def calc_predictions(hourly_height,latlon,time_recon,cora_data_dir):
         print('Calculating tidal constituents and predictions...')
         coef = utide.solve(hourly_height['time'],hourly_height['val'],lat=latlon[0])
@@ -1145,8 +1156,7 @@ class CoraEngine(HTF_model):
         if thresh_type == 'NOS':
             thresh_mllw = (1.04*float(datums[datums['datum']=='GT']['value']))+0.5
             conversion = float(datums[datums['datum']=='MHHW']['value']) - float(datums[datums['datum']=='MLLW']['value'])
-            thresh_mhhw = thresh_mllw-conversion
-            thresh1 = thresh_mhhw - float(datums[datums['datum']=='MSL']['value'])
+            thresh1 = thresh_mllw-conversion
         else:
             thresh1 = float(datums[datums['datum']==thresh_type]['value'])
         thresh = thresh1+thresh_rel
