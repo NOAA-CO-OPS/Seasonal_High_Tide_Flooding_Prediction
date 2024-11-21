@@ -1106,7 +1106,17 @@ class CoraEngine(HTF_model):
     @staticmethod
     def calc_predictions(hourly_height,latlon,time_recon,cora_data_dir):
         print('Calculating tidal constituents and predictions...')
-        coef = utide.solve(hourly_height['time'],hourly_height['val'],lat=latlon[0])
+        # Detrend #
+        ig = np.where(~np.isnan(hourly_height['val']))
+        t = (hourly_height['time'].iloc[ig]-hourly_height['time'].iloc[ig].iloc[0]).dt.seconds
+        slope,intercept,r_value,p_value,std_err = scipy.stats.linregress(t,hourly_height['val'].iloc[ig])
+        ts_detrend = hourly_height.copy()
+        ts_detrend['val'].iloc[ig] = ts_detrend['val'].iloc[ig]-((t*slope)+intercept) 
+        # Deconstruct to get constituents #
+        coef = utide.solve(ts_detrend['time'],ts_detrend['val'],
+                           lat=latlon[0],nodal=True,trend=False,method='ols',
+                           conf_int='linear',Rayleigh_min=0.95)
+        # Reconstruct for the desired period #
         predictions = utide.reconstruct(time_recon,coef)
         predictions = pd.DataFrame({'time':time_recon,
                                     'val':predictions['h']})      
@@ -1434,7 +1444,7 @@ class TadcInterface():
         return datums
     
     def prep_data(self,ts):
-        if len(np.where(np.isnan(ts['val']))[0])/len(ts)*100<5:
+        # if len(np.where(np.isnan(ts['val']))[0])/len(ts)*100<5:
             # Detrend, manually with a linear regression #
             t = np.array((ts['time']-ts['time'].iloc[0]).dt.total_seconds())
             m,b,r_val,p_val,std_err = scipy.stats.linregress(t[~np.isnan(ts['val'])],ts['val'][~np.isnan(ts['val'])])
@@ -1452,8 +1462,8 @@ class TadcInterface():
                                               ts_prepped['time'].iloc[0].to_pydatetime(),
                                               ts_prepped['time'].iloc[-1].to_pydatetime().replace(hour=23,minute=0,second=0))
             return ts_prepped
-        else:
-            raise ValueError('Hourly height timeseries contains >5% NaNs')
+        # else:
+            # raise ValueError('Hourly height timeseries contains >5% NaNs')
             
     def make_TADC_data(self,ts):
         ts.to_csv(self.path+'ts.csv',index=False)
