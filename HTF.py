@@ -436,7 +436,8 @@ class HTF_model:
             predictions          = CoraEngine.calc_predictions(hourly_height,
                                                             loc,
                                                             hourly_height['time'],
-                                                            cora_data_dir)
+                                                            cora_data_dir,
+                                                            datums_msl)
             slt                  = CoraEngine.calc_slt(hourly_height) 
             epoch_center         = CoraEngine.calc_epoch_center(years)
             flood_thresh         = CoraEngine.calc_flood_thresh(datums,thresh_type,thresh_rel)
@@ -494,7 +495,9 @@ class HTF_model:
             dt_end = datetime.datetime(dt_end.year,dt_end.month,dt_end.day,23,0,0)
             time_pred = pd.date_range(dt_start,dt_end,freq='h')
             print('Calculating tidal predictions...')
-            predictions = CoraEngine.calc_predictions(out_train['data']['hourly_height'],loc,time_pred,cora_data_dir)
+            f = open(cora_data_dir+'/CORA_'+str(loc[0])+'_'+str(loc[1])+'_1979_2022_datums.pkl','rb')
+            datums_msl = pickle.load(f)
+            predictions = CoraEngine.calc_predictions(out_train['data']['hourly_height'],loc,time_pred,cora_data_dir,datums_msl)
         return predictions
     
     @staticmethod
@@ -1104,14 +1107,14 @@ class CoraEngine(HTF_model):
         return hourly_height_mhhw,datums_mhhw
         
     @staticmethod
-    def calc_predictions(hourly_height,latlon,time_recon,cora_data_dir):
+    def calc_predictions(hourly_height,latlon,time_recon,cora_data_dir,datums_msl):
         print('Calculating tidal constituents and predictions...')
         # Detrend #
         ig = np.where(~np.isnan(hourly_height['val']))
         t = (hourly_height['time'].iloc[ig]-hourly_height['time'].iloc[ig].iloc[0]).dt.seconds
         slope,intercept,r_value,p_value,std_err = scipy.stats.linregress(t,hourly_height['val'].iloc[ig])
         ts_detrend = hourly_height.copy()
-        ts_detrend['val'].iloc[ig] = ts_detrend['val'].iloc[ig]-((t*slope)+intercept) 
+        ts_detrend['val'].iloc[ig] = ts_detrend['val'].iloc[ig]-((t*slope)+intercept)
         # Deconstruct to get constituents #
         coef = utide.solve(ts_detrend['time'],ts_detrend['val'],
                            lat=latlon[0],nodal=True,trend=False,method='ols',
@@ -1119,7 +1122,7 @@ class CoraEngine(HTF_model):
         # Reconstruct for the desired period #
         predictions = utide.reconstruct(time_recon,coef)
         predictions = pd.DataFrame({'time':time_recon,
-                                    'val':predictions['h']})      
+                                    'val':predictions['h']-float(datums_msl[datums_msl['datum']=='MHHW']['value'])})      
         return predictions
     
     @staticmethod
