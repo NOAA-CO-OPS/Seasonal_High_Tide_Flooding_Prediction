@@ -438,7 +438,10 @@ class HTF_model:
                                                             hourly_height['time'],
                                                             cora_data_dir,
                                                             datums_msl)
-            slt                  = CoraEngine.calc_slt(hourly_height) 
+            slt                  = CoraEngine.calc_slt(CoraEngine.get_timeseries(loc, 
+                                                             datetime.datetime(1980,1,1), 
+                                                             datetime.datetime(2019,12,31,23,0),
+                                                             cora_data_dir,temp_cora_retrend)) 
             epoch_center         = CoraEngine.calc_epoch_center(years)
             flood_thresh         = CoraEngine.calc_flood_thresh(datums,thresh_type,thresh_rel)
             
@@ -1087,13 +1090,13 @@ class CoraEngine(HTF_model):
     @staticmethod
     def calc_datums(hourly_height,latlon,cora_data_dir):
         print('Calculating datums with the CO-OPS Tidal Analysis Datum Calculator...')
-        if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_datums.pkl'):
-            datums_cora = TadcInterface(hourly_height,latlon[0],latlon[1]).run()
-            with open(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_datums.pkl','wb') as f:
-                pickle.dump(datums_cora,f)
-        else:
-            f = open(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_datums.pkl','rb')
-            datums_cora = pickle.load(f)
+        # if cora_data_dir is None or not os.path.exists(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_datums.pkl'):
+        datums_cora = TadcInterface(hourly_height,latlon[0],latlon[1]).run()
+        with open(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_datums.pkl','wb') as f:
+            pickle.dump(datums_cora,f)
+        # else:
+            # f = open(cora_data_dir+'/CORA_'+str(latlon[0])+'_'+str(latlon[1])+'_1979_2022_datums.pkl','rb')
+            # datums_cora = pickle.load(f)
         return datums_cora
     
     @staticmethod
@@ -1144,11 +1147,34 @@ class CoraEngine(HTF_model):
     @staticmethod
     def calc_slt(hourly_height):
         print('Computing the sea level trend...')
-        td = (hourly_height['time'].dt.to_pydatetime()-hourly_height['time'].dt.to_pydatetime()[0])
-        tds = np.array([td[i].total_seconds() for i in range(len(hourly_height))])
-        slope,intercept,rvalue,pvalue,stderr = scipy.stats.linregress(tds[~np.isnan(hourly_height['val'])],hourly_height['val'][~np.isnan(hourly_height['val'])])
-        slt = (slope*1000)*60*60*24*365 # Convert m/s to mm/yr #
-        # slt = 4.2732
+        def calc_seasonal_cycle(hourly_height):
+            months = hourly_height['time'].dt.month
+            month_avgs = []
+            for month in np.arange(1,13):
+                month_avgs.append(hourly_height['val'][months==month].mean())
+            seasonal_cycle = pd.DataFrame({'time':np.arange(1,13),'val':month_avgs})
+            return seasonal_cycle
+        
+        def calc_monthly_means(hourly_height):
+            yrmos_all = hourly_height['time'].dt.to_period('M')
+            vals = []
+            for yrmo in yrmos_all.unique():
+                vals.append(hourly_height['val'][yrmos_all==yrmo].mean())
+            monthly_means = pd.DataFrame({'time':yrmos_all.unique(),'val':vals})
+            return monthly_means
+        
+        seasonal_cycle = calc_seasonal_cycle(hourly_height)
+        monthly_means = calc_monthly_means(hourly_height)
+        use = monthly_means.copy()
+        use['val'] = monthly_means['val'].values-np.tile(seasonal_cycle['val'],[1,int(len(monthly_means)/len(seasonal_cycle))]).reshape(-1,1)
+        td = np.hstack([0,np.cumsum(np.ones_like(use['val'])*(1/12))])[0:-1] # Array of fractional years #
+        slope,intercept,rvalue,pvalue,stderr = scipy.stats.linregress(td[~np.isnan(monthly_means['val'])],monthly_means['val'][~np.isnan(monthly_means['val'])])
+        slt = slope*1000 # convert to mm/yr #       
+        # td = (hourly_height['time'].dt.to_pydatetime()-hourly_height['time'].dt.to_pydatetime()[0])
+        # tds = np.array([td[i].total_seconds() for i in range(len(hourly_height))])
+        # slope,intercept,rvalue,pvalue,stderr = scipy.stats.linregress(tds[~np.isnan(hourly_height['val'])],hourly_height['val'][~np.isnan(hourly_height['val'])])
+        # slt = (slope*1000)*60*60*24*365 # Convert m/s to mm/yr #
+        # slt = 2.4163
         return slt
     
     @staticmethod
