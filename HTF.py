@@ -12,6 +12,7 @@ import os
 import pandas as pd
 import pickle
 import pkg_resources
+import random
 import requests
 import scipy
 from sklearn.metrics import confusion_matrix
@@ -427,11 +428,11 @@ class HTF_model:
                                                           utils.datestr2dt(str(years[1])[0:4]+' '+str(years[1])[4:6]+' '+str(years[1])[6:8]+' 23:59'),
                                                           cora_data_dir,temp_cora_retrend)                
             datums_msl          = CoraEngine.calc_datums(CoraEngine.get_timeseries(loc, 
-                                                             datetime.datetime(1983,1,1), 
-                                                             datetime.datetime(2001,12,31,23,0),
-                                                             cora_data_dir,temp_cora_retrend),
-                                                         loc,
-                                                         cora_data_dir)
+                                                              datetime.datetime(1983,1,1), 
+                                                              datetime.datetime(2001,12,31,23,0),
+                                                              cora_data_dir,temp_cora_retrend),
+                                                          loc,
+                                                          cora_data_dir)
             hourly_height,datums = CoraEngine.msl2mhhw(hourly_height_msl,datums_msl)
             predictions          = CoraEngine.calc_predictions(hourly_height,
                                                             loc,
@@ -439,9 +440,9 @@ class HTF_model:
                                                             cora_data_dir,
                                                             datums_msl)
             slt                  = CoraEngine.calc_slt(CoraEngine.get_timeseries(loc, 
-                                                             datetime.datetime(1980,1,1), 
-                                                             datetime.datetime(2019,12,31,23,0),
-                                                             cora_data_dir,temp_cora_retrend)) 
+                                                              datetime.datetime(1980,1,1), 
+                                                              datetime.datetime(2019,12,31,23,0),
+                                                              cora_data_dir,temp_cora_retrend)) 
             epoch_center         = CoraEngine.calc_epoch_center(years)
             flood_thresh         = CoraEngine.calc_flood_thresh(datums,thresh_type,thresh_rel)
             
@@ -594,9 +595,6 @@ class HTF_model:
         else:
             raise ValueError('Currently, the only accepted assessment metric is htf_days.')
           
-
-        
-
 
 class ModelEngine():    
     @staticmethod
@@ -1125,7 +1123,7 @@ class CoraEngine(HTF_model):
         # Reconstruct for the desired period #
         predictions = utide.reconstruct(time_recon,coef)
         predictions = pd.DataFrame({'time':time_recon,
-                                    'val':predictions['h']-float(datums_msl[datums_msl['datum']=='MHHW']['value'])})      
+                                    'val':predictions['h']+float(datums_msl[datums_msl['datum']=='MSL']['value'])-float(datums_msl[datums_msl['datum']=='MHHW']['value'])})      
         return predictions
     
     @staticmethod
@@ -1200,6 +1198,7 @@ class CoraEngine(HTF_model):
             thresh1 = float(datums[datums['datum']==thresh_type]['value'])
         thresh = thresh1+thresh_rel
         return thresh
+
 
 class ApiInterface:
     '''
