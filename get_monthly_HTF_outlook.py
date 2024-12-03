@@ -96,6 +96,7 @@ for stn_id in htf_stn_dict:
     model.out_predict['prob_daily']['flood'] = np.where(model.out_predict['prob_daily']['val'] >= 0.05, 1, 0)       
 
     #FORMAT RESULTS IN DATAFRAME
+    print('Compiling results...')
     monthly_pred_df = pd.DataFrame()
 
     # add values from model.out_predict['prob_daily'] including year, month, day, flood, likelihood, dist_to_thresh
@@ -103,7 +104,7 @@ for stn_id in htf_stn_dict:
     monthly_pred_df.drop('time', axis=1, inplace=True)
 
     # add station ID from stn_id
-    monthly_pred_df['stationID'] = stn_id
+    monthly_pred_df['station_id'] = stn_id
     
     # add flood_category
     monthly_pred_df['flood_category'] = np.nan
@@ -115,7 +116,7 @@ for stn_id in htf_stn_dict:
     monthly_pred_df['htb_run_id'] = htb_run_id
     
     # rearrange columns
-    col_order = ['stationID', 'year', 'month', 'day', 'flood', 'flood_category', 'likelihood', 'minor_thresh', 'dist_to_thresh', 'htb_run_id']
+    col_order = ['station_id', 'year', 'month', 'day', 'flood', 'flood_category', 'likelihood', 'minor_thresh', 'dist_to_thresh', 'htb_run_id']
     monthly_pred_df = monthly_pred_df[col_order]
     print(monthly_pred_df)
 
@@ -124,4 +125,4 @@ for stn_id in htf_stn_dict:
 
 #EXPORT THE OUTPUT
 # save to a csv file
-all_monthly_pred_df.to_csv(data_dir + outpath + 'htf_pred.csv', index=False)
+all_monthly_pred_df.to_csv(data_dir + outpath + 'HTF_pred.csv', index=False)
