@@ -31,7 +31,7 @@ data_dir = os.getcwd()
 
 if not os.path.exists(data_dir+'/Monthly_HTF/Output/'):
     os.makedirs(data_dir+'/Monthly_HTF/Output/')
-outpath = '/Monthly_HTF/Output'
+outpath = '/Monthly_HTF/Output/'
 
 #get current time
 now = dt.datetime.now(timezone.utc)
@@ -61,13 +61,11 @@ htf_stn_df = pd.read_excel(data_dir + '/Monthly_HTF/Data/test-HighTideOutlookSta
 ## Create dictionary of station ID and region name
 htf_stn_dict = dict(zip(htf_stn_df['St ID'], htf_stn_df['Station Name']))
 
+#/////////////////////////////////MAIN//////////////////////////////////////#
+
 # RUN MONTHLY HIGH TIDE FLOODING MODEL
-
-# Create list to collect results for each station
-monthly_pred_list = []
-
-# Create dictionaries to append results for each station
-monthly_pred_dict = {}
+# Create empty dataframe to concatenate results for each station
+all_monthly_pred_df = pd.DataFrame()
 
 for stn_id in htf_stn_dict:
     model = HTF_model(loc=stn_id,
@@ -81,22 +79,12 @@ for stn_id in htf_stn_dict:
                       prctile_bin_val=prctile_bin_val
                      )
 
-# model = HTF_model(loc=8551910,
-# 		years_fit=[20041001,20240930],
-# 		years_assess=[20041001,20240930],
-# 		years_pred=[20241001,20250930],
-# 		assess_method='DusekEtAl',
-# 		assess_metric='htf_days',
-# 		holdout_num=None,
-# 		prctile_bin_val='pred_adj')
     print('Training the model for station {}...'.format(stn_id))
     model.train()
     print('Assessing the model for station {}...'.format(stn_id))
     model.assess()
     print('Calculating flood likelihoods for station {}...'.format(stn_id))
     model.predict()
-    #add predictions to dictionary for export to csv
-    #print(model.out_predict['prob_daily'])
 
     #split time column into year, month, and day columns
     model.out_predict['prob_daily']['time'] = pd.to_datetime(model.out_predict['prob_daily']['time'])
@@ -107,51 +95,33 @@ for stn_id in htf_stn_dict:
     #determine flood status (if likelihood is > 0.05)
     model.out_predict['prob_daily']['flood'] = np.where(model.out_predict['prob_daily']['val'] >= 0.05, 1, 0)       
 
-    #KAREN - ADD PREDICTIONS AS YOU GO
-    # monthly_pred_dict = {
-    #                     'stationID': [stn_id] * len(model.out_predict['prob_daily']['time']), #expand field to same length as other fields
-    #                     #'date': model.out_predict['prob_daily']['time'], 
-    #                     'year': model.out_predict['prob_daily']['year'].tolist(),
-    #                     'month': model.out_predict['prob_daily']['month'].tolist(),
-    #                     'day': model.out_predict['prob_daily']['day'].tolist(),
-    #                     'flood': model.out_predict['prob_daily']['flood'].tolist(),
-    #                     'flood_category': [np.nan] * len(model.out_predict['prob_daily']['time']),
-    #                     'likelihood': model.out_predict['prob_daily']['val'].tolist(),
-    #                     'minor_thresh': [model.out_train['data']['Flood thresh']] * len(model.out_predict['prob_daily']['time']),
-    #                     'dist_to_thresh': model.out_predict['prob_daily']['max freeboard'].tolist(),
-    #                     'htb_run_id': [htb_run_id] * len(model.out_predict['prob_daily']['time'])
-    #                     }
-    
-    # print('monthly predictions: ', monthly_pred_dict)
-
-    # # append dictionary to list
-    # monthly_pred_list.append(monthly_pred_dict.copy())
-    # create new dataframe
-    #monthly_pred_df = pd.DataFrame(columns=['year', 'month', 'day', 'flood',
-    #                                        'likelihood', 'minor_thresh', 'dist_to_thresh'])
+    #FORMAT RESULTS IN DATAFRAME
     monthly_pred_df = pd.DataFrame()
 
     # add values from model.out_predict['prob_daily'] including year, month, day, flood, likelihood, dist_to_thresh
     monthly_pred_df = pd.concat([monthly_pred_df, model.out_predict['prob_daily'].rename(columns={'val': 'likelihood', 'max freeboard': 'dist_to_thresh'})], ignore_index=True)
     monthly_pred_df.drop('time', axis=1, inplace=True)
-    print(monthly_pred_df)
+
     # add station ID from stn_id
     monthly_pred_df['stationID'] = stn_id
-    print(monthly_pred_df)
+    
     # add flood_category
     monthly_pred_df['flood_category'] = np.nan
+    
     # add values from model.out_train['data']: minor_thresh
     monthly_pred_df['minor_thresh'] = model.out_train['data']['Flood thresh']
+    
     # add htb_run_id
     monthly_pred_df['htb_run_id'] = htb_run_id
+    
     # rearrange columns
     col_order = ['stationID', 'year', 'month', 'day', 'flood', 'flood_category', 'likelihood', 'minor_thresh', 'dist_to_thresh', 'htb_run_id']
     monthly_pred_df = monthly_pred_df[col_order]
     print(monthly_pred_df)
 
+    all_monthly_pred_df = pd.concat([all_monthly_pred_df, monthly_pred_df], ignore_index=True)
+    print(all_monthly_pred_df)
 
-# CREATE A DATAFRAME FROM LIST OF STATION DATA DICTIONARIES
-#monthly_pred_df = pd.DataFrame(monthly_pred_list)
-
+#EXPORT THE OUTPUT
 # save to a csv file
-monthly_pred_df.to_csv('htf_pred.csv', index=False)
+all_monthly_pred_df.to_csv(data_dir + outpath + 'htf_pred.csv', index=False)
