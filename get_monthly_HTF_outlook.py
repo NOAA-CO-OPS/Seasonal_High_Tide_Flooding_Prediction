@@ -81,10 +81,51 @@ for stn_id in htf_stn_dict:
 
     print('Training the model for station {}...'.format(stn_id))
     model.train()
+
+    # Output model.out_train to compare to _res.mat predAdj, res, etc
+    #print('model.out_train: ', model.out_train)
+    # print('Saving residuals')
+    # model.out_train['resids'].to_csv(data_dir + outpath + 'HTF_resids-{}.csv'.format(stn_id), index=False)
+    
+    # print('Saving monthly_mu')
+    # model.out_train['dists_time']['monthly_mu'].to_csv(data_dir + outpath + 'HTF_monthly_mu-{}.csv'.format(stn_id), index=False)
+
+    # print('Saving monthly_sigma')
+    # model.out_train['dists_time']['monthly_sigma'].to_csv(data_dir + outpath + 'HTF_monthly_sigma-{}.csv'.format(stn_id), index=False)
+
+    # print('Saving month_mu')
+    # model.out_train['dists_time']['month_mu'].to_csv(data_dir + outpath + 'HTF_month_mu-{}.csv'.format(stn_id), index=False)
+
+    # print('Saving month_sigma')
+    # model.out_train['dists_time']['month_sigma'].to_csv(data_dir + outpath + 'HTF_month_sigma-{}.csv'.format(stn_id), index=False)  
+
+    # print('Saving anom_mu')
+    # model.out_train['dists_time']['anom_mu'].to_csv(data_dir + outpath + 'HTF_anom_mu-{}.csv'.format(stn_id), index=False)  
+
+    # print('Saving anom_sigma')
+    # model.out_train['dists_time']['anom_sigma'].to_csv(data_dir + outpath + 'HTF_anom_sigma-{}.csv'.format(stn_id), index=False)  
+
+    # print('Saving damped pers')
+    # damped_per_df = pd.DataFrame(model.out_train['damped_per'])
+    # damped_per_df.to_csv(data_dir + outpath + 'HTF_damped_per-{}.csv'.format(stn_id), index=False) 
+
+    print('Saving pred_adj')
+    pred_adj_df = pd.DataFrame(model.out_train['pred_adj'])
+    pred_adj_df.to_csv(data_dir + outpath + 'HTF_pred_adj-{}.csv'.format(stn_id), index=False)             
+
     print('Assessing the model for station {}...'.format(stn_id))
     model.assess()
+
+    # KAREN - Output assessment results...
+
     print('Calculating flood likelihoods for station {}...'.format(stn_id))
     model.predict()
+    
+    # Output hourly prediction to compare to MatLab
+    #model.out_predict['prob_hourly'].to_csv(data_dir + outpath + 'HTF_prob_hourly-{}.csv'.format(stn_id), index=False)
+
+    # Output max freeboard to compare to MatLab
+    #model.out_predict['freeboard'].to_csv(data_dir + outpath + 'HTF_freeboard-{}.csv'.format(stn_id), index=False)
 
     #split time column into year, month, and day columns
     model.out_predict['prob_daily']['time'] = pd.to_datetime(model.out_predict['prob_daily']['time'])
