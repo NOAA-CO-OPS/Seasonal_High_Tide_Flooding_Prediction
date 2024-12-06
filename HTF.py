@@ -105,6 +105,14 @@ class HTF_model:
     cora_data_dir: str, optional
         The directory of saved CORA timeseries and/or computed parameters, if it
         exists. The default is None.
+    
+    epsilon_mu: float, optional
+        The adjustment parameter to add to the derived residual distribution mean.
+        The default is 0.
+
+    epsilon_sigma: float, optional
+        The adjustment parameter to add to the derived residual distribution stdev.
+        The default is 0.
         
     temp_cora_retrend: list of float, optional
         The trend in m/s to artifically give the CORA hourly_height timeseries. This is meant
@@ -144,7 +152,8 @@ class HTF_model:
                  thresh_type='NOS',thresh_rel=0,
                  assess_method='DusekEtAl',assess_metric='htf_days',
                  fold_size=1,prctile_bin_val='pred_adj',
-                 cora_data_dir=None,temp_cora_retrend=None):     
+                 cora_data_dir=None,epsilon_mu=0,epsilon_sigma=0,
+                 temp_cora_retrend=None):     
         '''
         Initializes the HTF model and does initial error checking of inputs.
 
@@ -160,6 +169,8 @@ class HTF_model:
         self.fold_size = fold_size
         self.prctile_bin_val = prctile_bin_val
         self.cora_data_dir = cora_data_dir
+        self.epsilon_mu = epsilon_mu
+        self.epsilon_sigma = epsilon_sigma
         self.temp_cora_retrend = temp_cora_retrend
         
         # Check that either a NWLON or lat/lon were provided correctly #
@@ -219,7 +230,7 @@ class HTF_model:
                 print('Generating prediction starting in '+str(yrmo))
                 pred = self.out_train['data']['predictions'][self.out_train['data']['predictions']['time'].dt.to_period('M')>=yrmo]
                 pred = pred[pred['time'].dt.to_period('M')<yrmo+12]
-                out_run = self.run(pred,self.out_train)
+                out_run = self.run(pred,self.out_train,self.epsilon_mu,self.epsilon_sigma)
                 prob_daily_all.append(out_run['prob_daily'])
             print('Computing observed flood days...')   
             observed_floods = ModelEngine.calc_observed_floods(self.out_train['data'])
@@ -266,7 +277,7 @@ class HTF_model:
             # Run the trained model on the same data as it was trained on #
             print('Running the trained model on the same observations...')
             out_run = self.run(self.out_train['data']['predictions'],
-                               self.out_train)
+                               self.out_train,self.epsilon_mu,self.epsilon_sigma)
             # Do the skill assessment #
             print('Calclating model skill on the same observations...')
             self.out_assess = self.calc_skill(self.out_train['data'],
@@ -279,7 +290,7 @@ class HTF_model:
             data = self.pull_data(self.loc,self.years_assess,'lst_ldt',self.thresh_type,self.thresh_rel,self.cora_data_dir,self.temp_cora_retrend)           
             # Run the trained model on the new data #
             print('Running the trained model on the new observations...')
-            out_run = self.run(data['predictions'],self.out_train)                                                  
+            out_run = self.run(data['predictions'],self.out_train,self.epsilon_mu,self.epsilon_sigma)                                                  
             # Do the skill assessment #
             print('Calclating model skill on the new observations...')
             self.out_assess = self.calc_skill(data,out_run,self.assess_metric)
@@ -314,7 +325,7 @@ class HTF_model:
                     print('Generating prediction starting in '+str(yrmo))
                     pred = data_rerun['predictions'][data_rerun['predictions']['time'].dt.to_period('M')>=yrmo]
                     pred = pred[pred['time'].dt.to_period('M')<yrmo+12]
-                    out_rerun = self.run(pred,out_retrain)
+                    out_rerun = self.run(pred,out_retrain,self.epsilon_mu,self.epsilon_sigma)
                     prob_daily_1month = out_rerun['prob_daily'][out_rerun['prob_daily']['time'].dt.to_period('M')<yrmo+1]
                     prob_daily_1month_all.append(prob_daily_1month)
                 pred_all = pd.concat([df for df in prob_daily_1month_all if isinstance(df, pd.DataFrame)], ignore_index=True)
@@ -353,7 +364,7 @@ class HTF_model:
         
         # Run the trained model on the new data #
         print('Running the trained model with the predictions...')
-        self.out_predict = self.run(predictions,self.out_train) 
+        self.out_predict = self.run(predictions,self.out_train,self.epsilon_mu,self.epsilon_sigma) 
 
            
     @staticmethod    
@@ -445,7 +456,7 @@ class HTF_model:
                                                               cora_data_dir,temp_cora_retrend)) 
             epoch_center         = CoraEngine.calc_epoch_center(years)
             flood_thresh         = CoraEngine.calc_flood_thresh(datums,thresh_type,thresh_rel)
-            
+        
             data = {'ID':loc,
                     'Name':'CORA node',
                     'Epoch center':epoch_center,
@@ -505,7 +516,7 @@ class HTF_model:
         return predictions
     
     @staticmethod
-    def run(predictions,out_train):
+    def run(predictions,out_train,epsilon_mu,epsilon_sigma):
         yrmo = predictions['time'].dt.to_period('M').unique()
         # Split into 12-month chunks #
         chunks = [np.array(yrmo)[i:i + 12] for i in range(0, len(yrmo), 12)]
@@ -523,7 +534,9 @@ class HTF_model:
             months = predictions_chunk['time'].dt.month.unique()
             mu,sigma = ModelEngine.calc_dist_params(out_train,
                                                     months,
-                                                    persistence_apply)
+                                                    persistence_apply,
+                                                    epsilon_mu,
+                                                    epsilon_sigma)
             
             px = np.arange(-2,15.005,0.005)[0:-1] # The NTRs at which to evaluate the cdf #
             cy = ModelEngine.calc_cdf(px,
@@ -563,9 +576,10 @@ class HTF_model:
                 prob_hourly_all = prob_hourly_all._append(prob_hourly,ignore_index=True)
                 prob_daily_all = prob_daily_all._append(prob_daily,ignore_index=True)
         
-        out_run = {'freeboard':freeboard_all,
-                    'prob_hourly':prob_hourly_all,
-                    'prob_daily':prob_daily_all}
+        out_run = {'pred_adj':pred_adj,
+                   'freeboard':freeboard_all,
+                   'prob_hourly':prob_hourly_all,
+                   'prob_daily':prob_daily_all}
         return out_run
 
     @staticmethod
@@ -835,7 +849,7 @@ class ModelEngine():
         return persistence_apply
     
     @staticmethod
-    def calc_dist_params(out_train,months,persistence_apply):
+    def calc_dist_params(out_train,months,persistence_apply,epsilon_mu,epsilon_sigma):
         mu = np.zeros([12,len(out_train['dists_tide']['prctile_mu'])])
         sigma = np.zeros([12,len(out_train['dists_tide']['prctile_mu'])])
         for i in range(len(months)):
@@ -843,7 +857,7 @@ class ModelEngine():
             for j in range(len(out_train['dists_tide']['prctile_mu'])):
                 mu[month-1,j] = out_train['dists_time']['month_mu'].iloc[month-1]['val'] + persistence_apply[i] + out_train['dists_tide']['prctile_mu'].iloc[j]['val']
                 sigma[month-1,j] = out_train['dists_time']['month_sigma'].iloc[month-1]['val'] +  out_train['dists_tide']['prctile_sigma'].iloc[j]['val']
-        return mu,sigma 
+        return mu+epsilon_mu,sigma+epsilon_sigma 
     
     @staticmethod
     def calc_cdf(px,mu,sigma):
@@ -1123,7 +1137,7 @@ class CoraEngine(HTF_model):
         # Reconstruct for the desired period #
         predictions = utide.reconstruct(time_recon,coef)
         predictions = pd.DataFrame({'time':time_recon,
-                                    'val':predictions['h']+float(datums_msl[datums_msl['datum']=='MSL']['value'])-float(datums_msl[datums_msl['datum']=='MHHW']['value'])})      
+                                    'val':predictions['h']-float(datums_msl[datums_msl['datum']=='MHHW']['value'])})      
         return predictions
     
     @staticmethod

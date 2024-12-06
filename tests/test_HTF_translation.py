@@ -27,6 +27,8 @@ def run_model_py(station,years_fit,years_pred):
                     fold_size=1,
                     prctile_bin_val='pred_adj',
                     cora_data_dir=None,
+                    epsilon_mu=0,
+                    epsilon_sigma=0,
                     temp_cora_retrend=None)
     model.train()
     model.predict()
